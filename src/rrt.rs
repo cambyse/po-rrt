@@ -64,17 +64,17 @@ impl<const N: usize> RRT<'_, N> {
 	fn grow_tree(&self, start: [f64; N], goal: fn(&[f64; N]) -> bool, max_step: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<NodeRef<N>>) {
 		let mut final_nodes = Vec::<NodeRef<N>>::new();
 		let mut rrttree = RRTTree::new(start);
-		let kdtree = KdTree::new(start); // why no need to be mutable?
+		let mut kdtree = KdTree::new(start); // why no need to be mutable?
 
 		for _ in 0..n_iter_max {
 			let mut new_state = self.sample_space.sample();
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
-			new_state = backtrack(&kd_from.borrow().state, &mut new_state, max_step); 
+			new_state = backtrack(&kd_from.state, &mut new_state, max_step);
 
 			if (self.state_validator)(&new_state) {
-				if (self.transition_validator)(&kd_from.borrow().state, &new_state) {
-					let from = rrttree.get_node(kd_from.borrow().id);
+				if (self.transition_validator)(&kd_from.state, &new_state) {
+					let from = rrttree.get_node(kd_from.id);
 					let to = rrttree.add_node(from, new_state);
 					
 					kdtree.add(new_state, to.borrow().id);
