@@ -6,45 +6,57 @@ use std::vec::Vec;
 use core::cell::RefCell;
 use std::rc::{Weak, Rc};
 
+//Vec<RRTNode<N>>[id]
+
+pub struct RRTNode<const N: usize> {
+	pub id: usize,
+	pub state: [f64; N],
+	pub children_ids: Vec<usize>,
+	pub parent_id: Option<usize>,
+}
+
+impl<const N: usize> RRTNode<N> {
+	pub fn new(state: [f64; N], id: usize, parent_id: Option<usize>) -> Self {
+		Self { id, state, children_ids: Vec::new(), parent_id }
+	}
+}
 
 pub struct RRTTree<const N: usize> {
-	root: NodeRef<N>,
-	nodes: Vec<NodeRef<N>>,
+	pub nodes: Vec<RRTNode<N>>,
 }
 
 impl<const N: usize> RRTTree<N> {
-	fn new(state: [f64; N]) -> RRTTree<N> {
-		let root = Rc::new(RefCell::new(Node{
-				id: 0,
-				state,
-				parent: Weak::new(),
-				children: Vec::<NodeRef<N>>::new()
-			}));
-
-		RRTTree {
-			root: root.clone(),
-			nodes: vec![root.clone()],
+	fn add_node(&mut self, state: [f64; N], parent_id: Option<usize>) -> usize {
+		let id = self.nodes.len();
+		let node = RRTNode::new(state, id, parent_id);
+		if let Some(parent_id) = parent_id {
+			self.nodes[parent_id].children_ids.push(id);
 		}
+		self.nodes.push(node);
+		id
 	}
 
-	fn get_node(&self, id: usize) -> NodeRef<N> {
-		self.nodes[id].clone()
+	fn new(state: [f64; N]) -> Self {
+		let mut self_ = Self { nodes: Vec::new() };
+		self_.add_node(state, None);
+		self_
 	}
 
-	fn add_node(&mut self, parent: NodeRef<N>, state: [f64; N]) -> NodeRef<N> {
-		let node = Rc::new(RefCell::new(Node{
-				id: self.nodes.len(),
-				state,
-				parent: NodeRef::downgrade(&parent),
-				children: Vec::<NodeRef<N>>::new()
-			}));
+	fn get_path_to(&self, id: usize) -> Vec<[f64; N]> { // move out of class?
+		let mut path = Vec::new();
 
-		parent.borrow_mut().children.push(node.clone());
+		let mut node = &self.nodes[id];
+		path.push(node.state);
 
-		self.nodes.push(node.clone());
+		while let Some(id) = node.parent_id {
+			node = &self.nodes[id];
+			path.push(node.state);
+		}
 
-		node.clone()
+		path.reverse();
+		path
 	}
+
 }
 
 pub struct RRT<'a, const N: usize> {
@@ -56,31 +68,29 @@ pub struct RRT<'a, const N: usize> {
 
 impl<const N: usize> RRT<'_, N> {
 	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool, max_step: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
-		let (rrttree, final_nodes) = self.grow_tree(start, goal, max_step, n_iter_max);
+		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, n_iter_max);
 
-		(self.get_best_solution(&final_nodes), rrttree)
+		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
 	}
 
-	fn grow_tree(&self, start: [f64; N], goal: fn(&[f64; N]) -> bool, max_step: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<NodeRef<N>>) {
-		let mut final_nodes = Vec::<NodeRef<N>>::new();
+	fn grow_tree(&self, start: [f64; N], goal: fn(&[f64; N]) -> bool, max_step: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<usize>) {
+		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new(start);
-		let kdtree = KdTree::new(start); // why no need to be mutable?
+		let mut kdtree = KdTree::new(start);
 
 		for _ in 0..n_iter_max {
 			let mut new_state = self.sample_space.sample();
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
-			new_state = backtrack(&kd_from.borrow().state, &mut new_state, max_step); 
+			new_state = backtrack(&kd_from.state, &mut new_state, max_step);
 
 			if (self.state_validator)(&new_state) {
-				if (self.transition_validator)(&kd_from.borrow().state, &new_state) {
-					let from = rrttree.get_node(kd_from.borrow().id);
-					let to = rrttree.add_node(from, new_state);
-					
-					kdtree.add(new_state, to.borrow().id);
+				if (self.transition_validator)(&kd_from.state, &new_state) {
+					let new_node_id = rrttree.add_node(new_state, Some(kd_from.id));
+					kdtree.add(new_state, new_node_id);
 
 					if goal(&new_state) {
-						final_nodes.push(to);
+						final_node_ids.push(new_node_id);
 					}
 				}
 			}
@@ -88,60 +98,34 @@ impl<const N: usize> RRT<'_, N> {
 
 		//println!("number of final nodes: {}", final_nodes.len());
 
-		(rrttree, final_nodes)
+		(rrttree, final_node_ids)
 	}
 
-	fn get_best_solution(&self, final_nodes: &Vec<NodeRef<N>>) -> Result<Vec<[f64; N]>, &str> {
-		let mut candidates : Vec<Vec<[f64; N]>> = Vec::with_capacity(final_nodes.len());
-		let mut costs : Vec<f64> = Vec::with_capacity(final_nodes.len());
-
-		if final_nodes.len() == 0 {
+	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &Vec<usize>) -> Result<Vec<[f64; N]>, &str> {
+		if final_node_ids.len() == 0 {
 			return Err("No solution found");
 		}
 
-		for final_node in final_nodes.iter() {
-			let path = self.get_path_to(final_node);
+		let mut best_path = rrttree.get_path_to(final_node_ids[0]);
+		let mut best_cost = self.get_path_cost(&best_path);
+
+		for final_node_id in &final_node_ids[1..] {
+			let path = rrttree.get_path_to(*final_node_id);
 			let cost = self.get_path_cost(&path);
-			candidates.push(path);
-			costs.push(cost);
-		}
-
-		let mut best_index = 0;
-		let mut best_cost = f64::INFINITY;
-
-		for i in 0..costs.len() {
-			if costs[i] < best_cost {
-				best_index = i;
-				best_cost = costs[i];
+			if cost < best_cost {
+				best_path = path;
+				best_cost = cost;
 			}
 		}
 
-		Ok(candidates[best_index].clone())
-	}
-
-	fn get_path_to(&self, final_node: &NodeRef<N>) -> Vec<[f64; N]> { // move out of class?
-		let mut path = Vec::<[f64; N]>::new();
-		path.push(final_node.borrow().state);
-
-		let mut parent = final_node.borrow().parent.upgrade().clone();
-		
-		while !parent.is_none() {
-			path.push(parent.clone().unwrap().borrow().state);
-			parent = parent.clone().unwrap().borrow().parent.upgrade().clone();
-		}
-
-		path.reverse();
-
-		path
+		Ok(best_path)
 	}
 
 	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
-		let mut cost: f64 = 0.0;
-
-		for i in 1..path.len() {
-			cost += (self.cost_evaluator)(&path[i-1], &path[i]);
+		let mut cost = 0.0;
+		for (prev, next) in pairwise_iter(path) {
+			cost += (self.cost_evaluator)(prev, next)
 		}
-
 		cost
 	}
 }
@@ -205,7 +189,7 @@ fn test_plan_on_map() {
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
 	
 	let mut m = m.clone();
-	m.draw_tree(rrttree.root);
+	m.draw_tree(&rrttree);
 	m.draw_path(path_result.unwrap());
 	m.save("results/test_plan_on_map.pgm")
 }

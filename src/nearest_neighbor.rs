@@ -1,116 +1,81 @@
 use crate::common::*;
-use std::cell::RefCell;
-use std::rc::Rc;
-
-enum InsertionSide {
-	Left,
-	Right
-}
-
-type KdNodeRef<const N: usize> = Rc<RefCell<KdNode<N>>>; // is RefCell really needed?
 
 pub struct KdNode<const N: usize> {
-	pub id: usize,    
+	pub id: usize,
 	pub state: [f64; N],
-	axis: usize,
-	splitting_value: f64,
-	left: Option<KdNodeRef<N>>,
-	right: Option<KdNodeRef<N>>,
-}
-
-impl<const N: usize> Node<N> {
-	pub fn root(state: [f64; N]) ->KdNode<N> {
-		KdNode{ id: 0, state: state, axis:0, splitting_value: state[0], left: None, right: None }
-	}
+	left: Option<Box<KdNode<N>>>,
+	right: Option<Box<KdNode<N>>>,
 }
 
 pub struct KdTree<const N: usize> {
-	pub root: Option<KdNodeRef<N>>
+	pub root: KdNode<N>,
 }
 
 impl<const N: usize> KdTree<N> {
-	pub fn new(state: [f64; N]) -> KdTree<N> {
-		let n = Node::root(state);
-		let rnode = Rc::new(RefCell::new(n));
-		KdTree::<N>{ root: Some(rnode.clone()) }
+	pub fn new(state: [f64; N]) -> Self {
+		let root = KdNode { id: 0, state, left: None, right: None };
+		Self { root }
 	}
 
-	pub fn add(&self, state: [f64; N], id: usize) {
-		let mut current = self.root.as_ref().unwrap().clone();
+	pub fn add(&mut self, state: [f64; N], id: usize) {
+		let mut current = &mut self.root;
+		for axis in (0..N).into_iter().cycle() {
+			let next = if state[axis] < current.state[axis] {
+				&mut current.left
+			} else {
+				&mut current.right
+			};
 
-		let insertion_side: Option<InsertionSide>;
-
-		loop {
-			let shallow_clone = current.clone(); // is there a way to avoid clones?
-			if state[shallow_clone.borrow().axis] < shallow_clone.borrow().splitting_value {
-				match &shallow_clone.borrow().left {
-					Some(left) => current = left.clone(), // is there a way to avoid clones?
-					None => {insertion_side = Some(InsertionSide::Left); break;},
-				};
+			if next.is_some() {
+				current = next.as_mut().unwrap();
+			} else {
+				let node = KdNode { id, state, left: None, right: None };
+				*next = Some(Box::new(node));
+				return;
 			}
-			else {
-				match &shallow_clone.borrow().right {
-					Some(right) => current = right.clone(), // is there a way to avoid clones?
-					None => {insertion_side = Some(InsertionSide::Right); break;},
-				};
-			}
-		}
-
-		let axis = (current.borrow().axis + 1) % N;
-		let n = KdNode{
-			id,
-			state,
-			axis,
-			splitting_value: state[axis],
-			left: None,
-			right: None
-		};
-
-		match insertion_side.expect("insertion side must be determined beforehand") {
-			InsertionSide::Left => current.borrow_mut().left = Some(Rc::new(RefCell::new(n))),
-			InsertionSide::Right => current.borrow_mut().right = Some(Rc::new(RefCell::new(n))),
 		}
 	}
 
-	pub fn nearest_neighbor(&self, state: [f64; N]) -> KdNodeRef<N> {
-		let mut dmin = f64::INFINITY;
-		let mut nearest = self.root.as_ref().unwrap().clone();
-
-		KdTree::nearest_neighbor_from(state, self.root.as_ref().unwrap().clone(), &mut nearest, &mut dmin);
-
-		nearest
-	}
-
-	fn nearest_neighbor_from(state: [f64; N], from: KdNodeRef<N>, nearest: &mut KdNodeRef<N>, dmin: &mut f64) {
-		let d = norm2(&from.borrow().state, &state);
-
-		// check current
-		if d < *dmin {
-			*dmin = d;
-			*nearest = from.clone();
+	pub fn nearest_neighbor(&self, state: [f64; N]) -> &KdNode<N> {
+		struct Args<'a, const N: usize> {
+			state: [f64; N],
+			dmin: f64,
+			nearest: &'a KdNode<N>,
 		}
 
-		// go down
-		if state[from.borrow().axis] < from.borrow().splitting_value { 
-			// left first
-			if state[from.borrow().axis] - *dmin < from.borrow().splitting_value && from.borrow().left.is_some() {
-				KdTree::nearest_neighbor_from(state, from.borrow().left.as_ref().unwrap().clone(), nearest, dmin);
+		fn inner<'a, const N: usize>(a: &mut Args<'a, N>, from: &'a KdNode<N>, axis: usize) {
+			{
+				let d = norm2(&from.state, &a.state);
+				if d < a.dmin {
+					a.dmin = d;
+					a.nearest = from;
+				}
 			}
 
-			if state[from.borrow().axis] + *dmin >= from.borrow().splitting_value && from.borrow().right.is_some() {
-				KdTree::nearest_neighbor_from(state, from.borrow().right.as_ref().unwrap().clone(), nearest, dmin);
+			// go down
+			let next_axis = (axis+1) % N;
+			if a.state[axis] < from.state[axis] {
+				// left first
+				if a.state[axis] - a.dmin < from.state[axis] && from.left.is_some() {
+					inner(a, from.left.as_ref().unwrap(), next_axis);
+				}
+				if a.state[axis] + a.dmin >= from.state[axis] && from.right.is_some() {
+					inner(a, from.right.as_ref().unwrap(), next_axis);
+				}
+			} else {
+				// right first
+				if a.state[axis] + a.dmin >= from.state[axis] && from.right.is_some() {
+					inner(a, from.right.as_ref().unwrap(), next_axis);
+				}
+				if a.state[axis] - a.dmin < from.state[axis] && from.left.is_some() {
+					inner(a, from.left.as_ref().unwrap(), next_axis);
+				}
 			}
 		}
-		else { 
-			// right first
-			if state[from.borrow().axis] + *dmin >= from.borrow().splitting_value && from.borrow().right.is_some() {
-				KdTree::nearest_neighbor_from(state, from.borrow().right.as_ref().unwrap().clone(), nearest, dmin);
-			}
 
-			if state[from.borrow().axis] - *dmin < from.borrow().splitting_value && from.borrow().left.is_some() {
-				KdTree::nearest_neighbor_from(state, from.borrow().left.as_ref().unwrap().clone(), nearest, dmin);
-			}
-		}
+		let mut a = Args { state, dmin: f64::INFINITY, nearest: &self.root };
+		inner(&mut a, &self.root, 0);
+		a.nearest
 	}
 }
 
@@ -121,9 +86,7 @@ mod tests {
 use super::*;
 
 // tree creation
-fn check_node(node: &KdNode<2>, id: usize, state: [f64; 2], axis: usize, splitting_value: f64) {
-	assert_eq!(node.axis, axis);
-	assert_eq!(node.splitting_value, splitting_value);
+fn check_node(node: &KdNode<2>, id: usize, state: [f64; 2]) {
 	assert_eq!(node.state, state);
 	assert_eq!(node.id, id);
 }
@@ -131,41 +94,34 @@ fn check_node(node: &KdNode<2>, id: usize, state: [f64; 2], axis: usize, splitti
 #[test]
 fn test_kdtree_creation() {
 	let tree = KdTree::new([3.0, 6.0]);
-	let root = tree.root.unwrap();
-	assert_eq!(root.borrow().id, 0);
-	assert!(root.borrow().left.is_none());
-	assert!(root.borrow().right.is_none());
-	assert_eq!(root.borrow().splitting_value, 3.0);
+	let root = &tree.root;
+	assert_eq!(root.id, 0);
+	assert!(root.left.is_none());
+	assert!(root.right.is_none());
 }
 
 #[test]
 fn test_add_second_level_left() {
-	let tree = KdTree::new([3.0, 6.0]);
+	let mut tree = KdTree::new([3.0, 6.0]);
 	tree.add([2.0, 7.0], 1);
-	
-	let root = tree.root.unwrap();
-	let left = root.borrow().left.as_ref().unwrap().clone();
 
-	assert!(root.borrow().right.is_none());
-	check_node(&left.borrow(), 1, [2.0, 7.0], 1, 7.0);
+	assert!(tree.root.right.is_none());
+	check_node(tree.root.left.as_ref().unwrap(), 1, [2.0, 7.0]);
 }
 
 #[test]
 fn test_add_second_level_right() {
-	let tree = KdTree::new([3.0, 6.0]);
+	let mut tree = KdTree::new([3.0, 6.0]);
 	tree.add([17.0, 15.0], 1);
 	
-	let root = tree.root.unwrap();
-	let right = root.borrow().right.as_ref().unwrap().clone();
-
-	assert!(root.borrow().left.is_none());
-	check_node(&right.borrow(), 1, [17.0, 15.0], 1, 15.0);
+	assert!(tree.root.left.is_none());
+	check_node(tree.root.right.as_ref().unwrap(), 1, [17.0, 15.0]);
 }
 
 // see examples https://www.geeksforgeeks.org/k-dimensional-tree/
 #[test]
 fn test_full_tree() {
-	let tree = KdTree::new([3.0, 6.0]);
+	let mut tree = KdTree::new([3.0, 6.0]);
 
 	tree.add([17.0, 15.0], 1);
 	tree.add([13.0, 15.0], 2);
@@ -175,49 +131,44 @@ fn test_full_tree() {
 	tree.add([10.0, 19.0], 6);
 
 	// BFS left right
-	let root = tree.root.unwrap();
+	let root = &tree.root;
 	{
-		let node = root.borrow().left.as_ref().unwrap().clone();
-
-		check_node(&node.borrow(), 5, [2.0, 7.0], 1, 7.0);
+		let node = root.left.as_ref().unwrap();
+		check_node(node, 5, [2.0, 7.0]);
 	}
 	{
-		let node = root.borrow().right.as_ref().unwrap().clone();
-
-		check_node(&node.borrow(), 1, [17.0, 15.0], 1, 15.0);
+		let node = root.right.as_ref().unwrap();
+		check_node(node, 1, [17.0, 15.0]);
 	}
 	{
-		let node = root.borrow().right.as_ref().unwrap().borrow()
-								.left.as_ref().unwrap().clone();
-
-		check_node(&node.borrow(), 3, [6.0, 12.0], 0, 6.0);
+		let node = root.right.as_ref().unwrap()
+						.left.as_ref().unwrap();
+		check_node(node, 3, [6.0, 12.0]);
 	}
 	{
-		let node = root.borrow().right.as_ref().unwrap().borrow()
-								.right.as_ref().unwrap().clone();
+		let node = root.right.as_ref().unwrap()
+					   .right.as_ref().unwrap();
 
-		check_node(&node.borrow(), 2, [13.0, 15.0], 0, 13.0);
+		check_node(node, 2, [13.0, 15.0]);
 	}
 	{
-		let node = root.borrow().right.as_ref().unwrap().borrow()
-								.left.as_ref().unwrap().borrow()
-								.right.as_ref().unwrap().clone();
-
-		check_node(&node.borrow(), 4, [9.0, 1.0], 1, 1.0);
+		let node = root.right.as_ref().unwrap()
+					   .left.as_ref().unwrap()
+					   .right.as_ref().unwrap();
+		check_node(node, 4, [9.0, 1.0]);
 	}
 	{
-		let node = root.borrow().right.as_ref().unwrap().borrow()
-								.right.as_ref().unwrap().borrow()
-								.left.as_ref().unwrap().clone();
-
-		check_node(&node.borrow(), 6, [10.0, 19.0], 1, 19.0);
+		let node = root.right.as_ref().unwrap()
+					   .right.as_ref().unwrap()
+					   .left.as_ref().unwrap();
+		check_node(node, 6, [10.0, 19.0]);
 	}
 }
 
 // query nearest neighbors
 #[test]
 fn test_nearest_neighbor() {
-	let tree = KdTree::new([3.0, 6.0]);
+	let mut tree = KdTree::new([3.0, 6.0]);
 
 	tree.add([17.0, 15.0], 1);
 	tree.add([13.0, 15.0], 2);
@@ -228,17 +179,17 @@ fn test_nearest_neighbor() {
 
 	{
 		let node = tree.nearest_neighbor([17.0, 15.0]);
-		assert_eq!(node.borrow().state, [17.0, 15.0]);
+		assert_eq!(node.state, [17.0, 15.0]);
 	}
 
 	{
 		let node = tree.nearest_neighbor([9.1, 1.0]);
-		assert_eq!(node.borrow().state, [9.0, 1.0]);
+		assert_eq!(node.state, [9.0, 1.0]);
 	}
 	 
 	{
 		let node = tree.nearest_neighbor([2.0, 8.0]);
-		assert_eq!(node.borrow().state, [2.0, 7.0]);
+		assert_eq!(node.state, [2.0, 7.0]);
 	}	
 }
 
