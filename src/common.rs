@@ -1,5 +1,5 @@
 use itertools::izip;
-use std::rc::{Weak, Rc};
+use std::{iter::Zip, rc::{Weak, Rc}, slice::Iter};
 use std::cell::RefCell;
 
 pub fn norm1<const N: usize>(a: &[f64; N], b: &[f64; N]) -> f64 {
@@ -38,19 +38,6 @@ pub fn backtrack<const N: usize>(from: &[f64;N], to: &mut [f64;N], max_step: f64
 	*to
 }
 
-pub type WeakRef<const N: usize> = Weak<RefCell<Node<N>>>; // is RefCell really needed?
-pub type NodeRef<const N: usize> = Rc<RefCell<Node<N>>>; // is RefCell really needed?
-
-pub struct Node<const N: usize> {
-	pub id: usize,    
-	pub state: [f64; N],
-	pub parent: WeakRef<N>,
-	pub children: Vec<NodeRef<N>>,
+pub fn pairwise_iter<T>(v: &Vec<T>) -> Zip<Iter<T>, Iter<T>> {
+	v[0..v.len()-1].iter().zip(&v[1..])
 }
-
-
-/*impl<const N: usize> Drop for Node<N> {
-		fn drop(&mut self) {
-				println!("Dropping Node!");
-		}
-}*/

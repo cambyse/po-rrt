@@ -1,4 +1,4 @@
-use crate::NodeRef;
+use crate::{rrt::RRTTree};
 use image::Luma;
 use image::DynamicImage::ImageLuma8;
 use std::vec::Vec;
@@ -41,10 +41,12 @@ impl Map {
 		}
 	}
 
-	pub fn draw_tree(&mut self, root: NodeRef<2>) {
-		for c in &root.borrow().children {
-			self.draw_line(root.borrow().state, c.borrow().state, 180);
-			self.draw_tree(c.clone());
+	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
+		for c in &rrttree.nodes {
+			if let Some(parent_id) = c.parent_id {
+				let parent = &rrttree.nodes[parent_id];
+				self.draw_line(parent.state, c.state, 180);
+			}
 		}
 	}
 
