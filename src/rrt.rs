@@ -59,14 +59,30 @@ impl<const N: usize> RRTTree<N> {
 
 }
 
-pub struct RRT<'a, const N: usize> {
-	sample_space: SampleSpace<N>,
-	state_validator : &'a dyn Fn(&[f64; N]) -> bool,
-	transition_validator : &'a dyn Fn(&[f64; N], &[f64; N]) -> bool,
-	cost_evaluator : &'a dyn Fn(&[f64; N], &[f64; N]) -> f64,
+pub trait RTTFuncs<const N: usize> {
+	fn state_validator(&self, _state: &[f64; N]) -> bool {
+		true
+	}
+
+	fn transition_validator(&self, _from: &[f64; N], _to: &[f64; N]) -> bool {
+		true
+	}
+
+	fn cost_evaluator(&self, a: &[f64; N], b: &[f64; N]) -> f64 {
+		norm2(a,b)
+	}
 }
 
-impl<const N: usize> RRT<'_, N> {
+pub struct RRT<F: RTTFuncs<N>, const N: usize> {
+	sample_space: SampleSpace<N>,
+	fns: F,
+}
+
+impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
+	pub fn new(sample_space: SampleSpace<N>, fns: F) -> Self {
+		Self { sample_space, fns }
+	}
+
 	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool, max_step: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
 		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, n_iter_max);
 
@@ -84,8 +100,8 @@ impl<const N: usize> RRT<'_, N> {
 
 			new_state = backtrack(&kd_from.state, &mut new_state, max_step);
 
-			if (self.state_validator)(&new_state) {
-				if (self.transition_validator)(&kd_from.state, &new_state) {
+			if self.fns.state_validator(&new_state) {
+				if self.fns.transition_validator(&kd_from.state, &new_state) {
 					let new_node_id = rrttree.add_node(new_state, Some(kd_from.id));
 					kdtree.add(new_state, new_node_id);
 
@@ -124,7 +140,7 @@ impl<const N: usize> RRT<'_, N> {
 	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
 		let mut cost = 0.0;
 		for (prev, next) in pairwise_iter(path) {
-			cost += (self.cost_evaluator)(prev, next)
+			cost += self.fns.cost_evaluator(prev, next)
 		}
 		cost
 	}
@@ -137,24 +153,14 @@ use super::*;
 
 #[test]
 fn test_plan_empty_space() {
-	fn state_validator(_state: &[f64; 2]) -> bool {
-		true
-	}	
-
-	fn transition_validator(_from: &[f64; 2], _to: &[f64; 2]) -> bool {
-		true
-	}	
+	struct Funcs {}
+	impl RTTFuncs<2> for Funcs {}
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.9).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT{
-		sample_space: SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]},
-		state_validator: &state_validator,
-		transition_validator: &transition_validator,
-		cost_evaluator: &norm2,
-	};
+	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, Funcs{});
 
 	let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 1000);
 
@@ -164,31 +170,29 @@ fn test_plan_empty_space() {
 #[test]
 fn test_plan_on_map() {
 	let m = Map::open("data/map3.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	let m2 = m.clone();
 
-	let state_validator = |state: &[f64; 2]| -> bool {
-		m.is_state_valid(state)
-	};	
+	struct Funcs {
+		m: Map,
+	}
 
-	fn transition_validator(_from: &[f64; 2], _to: &[f64; 2]) -> bool {
-		true
-	}	
+	impl RTTFuncs<2> for Funcs {
+		fn state_validator(&self, state: &[f64; 2]) -> bool {
+			self.m.is_state_valid(state)
+		}
+	}
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT{
-		sample_space: SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]},
-		state_validator: &state_validator,
-		transition_validator: &transition_validator,
-		cost_evaluator: &norm2,
-	};
+	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, Funcs{m});
 
 	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5000);
 
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
 	
-	let mut m = m.clone();
+	let mut m = m2;
 	m.draw_tree(&rrttree);
 	m.draw_path(path_result.unwrap());
 	m.save("results/test_plan_on_map.pgm")
