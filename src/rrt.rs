@@ -127,11 +127,9 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 	}
 
 	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
-		let mut cost = 0.0;
-		for (prev, next) in pairwise_iter(path) {
-			cost += self.fns.cost_evaluator(prev, next)
-		}
-		cost
+		pairwise_iter(path)
+			.map(|(a,b)| self.fns.cost_evaluator(a,b))
+			.sum()
 	}
 }
 
