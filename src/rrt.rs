@@ -95,7 +95,7 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 			let mut new_state = self.sample_space.sample();
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
-			new_state = backtrack(&kd_from.state, &mut new_state, max_step);
+			backtrack(&kd_from.state, &mut new_state, max_step);
 
 			if self.fns.state_validator(&new_state) {
 				if self.fns.transition_validator(&kd_from.state, &new_state) {
