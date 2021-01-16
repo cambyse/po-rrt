@@ -6,18 +6,15 @@ use std::vec::Vec;
 use core::cell::RefCell;
 use std::rc::{Weak, Rc};
 
-//Vec<RRTNode<N>>[id]
-
 pub struct RRTNode<const N: usize> {
-	pub id: usize,
 	pub state: [f64; N],
 	pub children_ids: Vec<usize>,
 	pub parent_id: Option<usize>,
 }
 
 impl<const N: usize> RRTNode<N> {
-	pub fn new(state: [f64; N], id: usize, parent_id: Option<usize>) -> Self {
-		Self { id, state, children_ids: Vec::new(), parent_id }
+	pub fn new(state: [f64; N], parent_id: Option<usize>) -> Self {
+		Self { state, children_ids: Vec::new(), parent_id }
 	}
 }
 
@@ -28,7 +25,7 @@ pub struct RRTTree<const N: usize> {
 impl<const N: usize> RRTTree<N> {
 	fn add_node(&mut self, state: [f64; N], parent_id: Option<usize>) -> usize {
 		let id = self.nodes.len();
-		let node = RRTNode::new(state, id, parent_id);
+		let node = RRTNode::new(state, parent_id);
 		if let Some(parent_id) = parent_id {
 			self.nodes[parent_id].children_ids.push(id);
 		}
