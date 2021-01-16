@@ -115,23 +115,15 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 	}
 
 	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &Vec<usize>) -> Result<Vec<[f64; N]>, &str> {
-		if final_node_ids.len() == 0 {
-			return Err("No solution found");
-		}
-
-		let mut best_path = rrttree.get_path_to(final_node_ids[0]);
-		let mut best_cost = self.get_path_cost(&best_path);
-
-		for final_node_id in &final_node_ids[1..] {
-			let path = rrttree.get_path_to(*final_node_id);
-			let cost = self.get_path_cost(&path);
-			if cost < best_cost {
-				best_path = path;
-				best_cost = cost;
-			}
-		}
-
-		Ok(best_path)
+		final_node_ids.iter()
+			.map(|id| {
+				let path = rrttree.get_path_to(*id);
+				let cost = self.get_path_cost(&path);
+				(path, cost)
+			})
+			.min_by(|(_,a),(_,b)| a.partial_cmp(b).expect("NaN found"))
+			.map(|(p, _)| p)
+			.ok_or("No solution found")
 	}
 
 	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
