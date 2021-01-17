@@ -1,6 +1,7 @@
 use crate::{rrt::RRTTree};
 use image::Luma;
 use image::DynamicImage::ImageLuma8;
+use core::f64;
 use std::vec::Vec;
 
 #[derive(Clone)]
@@ -10,18 +11,25 @@ pub struct Map
 	low: [f64; 2],
 	//up: [f64; 2], // low + up are enough and make up redundant
 	ppm: f64,
+	zones: Option<image::GrayImage>,
 }
 
 impl Map {
-	pub fn open(filepath : &str, low: [f64; 2], up: [f64; 2]) -> Map{
+	pub fn open_image(filepath : &str) -> image::GrayImage {
 		let img = image::open(filepath).expect(&format!("Impossible to open image: {}", filepath));
 
 		match img {
-			ImageLuma8(gray_img) => {
-				return Map::build(gray_img, low, up);
-			},
+			ImageLuma8(gray_img) => gray_img,
 			_ => panic!("Wrong image format!"),
 		}
+	}
+
+	pub fn open(filepath : &str, low: [f64; 2], up: [f64; 2]) -> Self {
+		Self::build(Self::open_image(filepath), low, up)
+	}
+
+	pub fn add_zones(&mut self, filepath : &str) {
+		self.zones = Some(Self::open_image(filepath));
 	}
 
 	pub fn save(&self, filepath: &str) {
@@ -33,6 +41,17 @@ impl Map {
 		let p = self.img.get_pixel(ij[1], ij[0]);
 
 		p[0] == 255
+	}
+
+	pub fn is_state_valid_2(&self, xy: &[f64; 2]) -> Belief {
+		let ij = self.to_pixel_coordinates(&*xy);
+		let p = self.img.get_pixel(ij[1], ij[0]);
+
+		match p[0] {
+			255 => Belief::Always(true),
+			0 => Belief::Always(false),
+			p => Belief::Choice(self.get_zone_index(&ij).unwrap(), (p as f64) / 255.0)
+		}
 	}
 
 	pub fn draw_path(&mut self, path: Vec<[f64;2]>) {
@@ -57,10 +76,18 @@ impl Map {
 		[i, j]
 	}
 
+	fn get_zone_index(&self, ij: &[u32; 2]) -> Option<usize> {
+		let p = self.zones.as_ref().expect("Zones missing").get_pixel(ij[1], ij[0]);
+		match p[0] {
+			255 => None,
+			p => Some(p as usize),
+		}
+	}
+
 	fn build(img: image::GrayImage, low: [f64; 2], up: [f64; 2])-> Map {
 		let ppm = (img.width() as f64) / (up[0] - low[0]);
 
-		Map{img, low, /*up,*/ ppm}
+		Map{img, low, /*up,*/ ppm, zones: None}
 	}
 
 	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: u8) {
@@ -83,6 +110,40 @@ impl Map {
 	}
 } 
 
+pub enum Belief {
+	Always(bool),
+	Choice(usize, f64),
+}
+
+/*
+#[derive(Clone)]
+pub struct MultiMap
+{
+	map: Map,
+	priors: Vec<f64>,
+}*/
+
+
+/* 
+impl MultiMap {
+	pub fn open(filepaths : &[&str], priors: Vec<f64>, low: [f64; 2], up: [f64; 2]) -> Self
+	{
+		assert_eq!(filepaths.len(), priors.len());
+
+		let maps = filepaths.iter()
+			.map(|path| Map::open(path, low.clone(), up.clone()))
+			.collect();
+		Self { maps, priors }
+	}
+
+	pub fn is_state_valid(&self, xy: &[f64; 2], index: usize) -> bool {
+		self.maps[index].is_state_valid(xy)
+	}
+
+	pub fn is_state_valid(&self, xy: &[f64; 2]) -> Belief {
+		
+	}
+}*/
 
 #[cfg(test)]
 mod tests {
@@ -91,6 +152,14 @@ use super::*;
 use std::fs;
 use std::path::Path;
    
+#[test]
+fn open_images() {
+		let mut map = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+		map.add_zones("data/map2_zones.pgm");
+
+		map.is_state_valid_2(&[0.0, 0.0]);
+	}
+
 #[test]
 fn open_image() {
 		Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
