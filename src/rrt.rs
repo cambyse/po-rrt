@@ -24,26 +24,17 @@ impl<const N: usize> RRTTree<N> {
 		Self { nodes: vec![root] }
 	}
 
-	fn add_node(&mut self, state: [f64; N], parent_id: usize) -> usize {
+	fn add_node(&mut self, state: [f64; N], parent_id: usize, dist_from_parent: f64) -> usize {
 		let id = self.nodes.len();
-
-		let parent = &self.nodes[parent_id];
-		let dist_from_parent = norm2(&parent.state, &state);
-
 		let node = RRTNode { state, parent_id: Some(parent_id), dist_from_parent };
 		self.nodes.push(node);
 		id
 	}
 
-	fn reparent_node(&mut self, node_id: usize, parent_id: usize) {
-		// we do things in two steps to avoid making the borrow checker unhappy
-		let parent = &self.nodes[parent_id];
-		let node = &self.nodes[node_id];
-		let dist = norm2(&parent.state, &node.state);
-
+	fn reparent_node(&mut self, node_id: usize, parent_id: usize, dist_from_parent: f64) {
 		let node = &mut self.nodes[node_id];
 		node.parent_id = Some(parent_id);
-		node.dist_from_parent = dist;
+		node.dist_from_parent = dist_from_parent;
 	}
 
 	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>) -> Vec<f64> {
@@ -169,18 +160,24 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 					.unwrap_or((kd_from.id, 0.0));
 
 				// Add the node in the trees
-				let new_node_id = rrttree.add_node(new_state, parent_id);
+				let dist_from_parent = {
+					let parent = &rrttree.nodes[parent_id];
+					self.fns.cost_evaluator(&parent.state, &new_state)
+				};
+				let new_node_id = rrttree.add_node(new_state, parent_id, dist_from_parent);
 				kdtree.add(new_state, new_node_id);
 
 				// Step 2: Perhaps we can reparent some of the neighbours to the new node
-				let new_state_distance = parent_distance + rrttree.nodes[new_node_id].dist_from_parent;
+				let new_state_distance = parent_distance + dist_from_parent;
 				for (neighbour_id, distance) in zip(&neighbour_ids, &distances) {
 					if *neighbour_id == parent_id { continue; }
-
 					let neighbour = &rrttree.nodes[*neighbour_id];
-					let new_distance = new_state_distance + self.fns.cost_evaluator(&new_state, &neighbour.state);
+					// XXX We should call self.fns.transition_validator() again if the transition
+					// validator is not symetric.
+					let new_dist_to_parent = self.fns.cost_evaluator(&new_state, &neighbour.state);
+					let new_distance = new_state_distance + new_dist_to_parent;
 					if new_distance < *distance {
-						rrttree.reparent_node(*neighbour_id, new_node_id);
+						rrttree.reparent_node(*neighbour_id, new_node_id, new_dist_to_parent);
 					}
 				}
 
