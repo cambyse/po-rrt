@@ -1,21 +1,17 @@
+use itertools::{all, izip, zip};
+
 use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
-use std::vec::Vec;
+use std::{any, cmp::min, collections::BTreeMap, vec::Vec};
 use core::cell::RefCell;
 use std::rc::{Weak, Rc};
 
 pub struct RRTNode<const N: usize> {
 	pub state: [f64; N],
-	pub children_ids: Vec<usize>,
 	pub parent_id: Option<usize>,
-}
-
-impl<const N: usize> RRTNode<N> {
-	pub fn new(state: [f64; N], parent_id: Option<usize>) -> Self {
-		Self { state, children_ids: Vec::new(), parent_id }
-	}
+	pub dist_from_parent: f64,
 }
 
 pub struct RRTTree<const N: usize> {
@@ -23,23 +19,75 @@ pub struct RRTTree<const N: usize> {
 }
 
 impl<const N: usize> RRTTree<N> {
-	fn add_node(&mut self, state: [f64; N], parent_id: Option<usize>) -> usize {
+	fn new(state: [f64; N]) -> Self {
+		let root = RRTNode { state, parent_id: None, dist_from_parent: 0.0 };
+		Self { nodes: vec![root] }
+	}
+
+	fn add_node(&mut self, state: [f64; N], parent_id: usize) -> usize {
 		let id = self.nodes.len();
-		let node = RRTNode::new(state, parent_id);
-		if let Some(parent_id) = parent_id {
-			self.nodes[parent_id].children_ids.push(id);
-		}
+
+		let parent = &self.nodes[parent_id];
+		let dist_from_parent = norm2(&parent.state, &state);
+
+		let node = RRTNode { state, parent_id: Some(parent_id), dist_from_parent };
 		self.nodes.push(node);
 		id
 	}
 
-	fn new(state: [f64; N]) -> Self {
-		let mut self_ = Self { nodes: Vec::new() };
-		self_.add_node(state, None);
-		self_
+	fn reparent_node(&mut self, node_id: usize, parent_id: usize) {
+		// we do things in two steps to avoid making the borrow checker unhappy
+		let parent = &self.nodes[parent_id];
+		let node = &self.nodes[node_id];
+		let dist = norm2(&parent.state, &node.state);
+
+		let node = &mut self.nodes[node_id];
+		node.parent_id = Some(parent_id);
+		node.dist_from_parent = dist;
 	}
 
-	fn get_path_to(&self, id: usize) -> Vec<[f64; N]> { // move out of class?
+	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>) -> Vec<f64> {
+		if leaf_ids.is_empty() {
+			return vec![];
+		}
+
+		if leaf_ids.len() == 1 {
+			return vec![0.0];
+		}
+
+		// We get a list of leaves. For each leaf, we go up the ancestor chain,
+		// until we hit the root, and compute the distance from the root.
+		// It would be more efficient to stop at the common ancestor, but we don't
+		// know which one it is.
+
+		fn compute_distance_from_root<const N: usize>(
+				tree: &RRTTree<N>,
+				distances_from_root: &mut BTreeMap<usize, f64>,
+				node_id: usize) -> f64 {
+			if node_id == 0 {
+				return 0.0;
+			}
+
+			if let Some(d) = distances_from_root.get(&node_id) {
+				return *d;
+			}
+
+			let node = &tree.nodes[node_id];
+			let parent_id = node.parent_id.unwrap();
+
+			let d = compute_distance_from_root(tree, distances_from_root, parent_id) + node.dist_from_parent;
+			distances_from_root.insert(node_id, d);
+
+			return d;
+		}
+
+		let mut distances_from_root = BTreeMap::new();
+		leaf_ids.iter()
+			.map(|id| compute_distance_from_root(&self, &mut distances_from_root, *id))
+			.collect::<Vec<_>>()
+	}
+
+	fn get_path_to(&self, id: usize) -> Vec<[f64; N]> {
 		let mut path = Vec::new();
 
 		let mut node = &self.nodes[id];
@@ -53,7 +101,6 @@ impl<const N: usize> RRTTree<N> {
 		path.reverse();
 		path
 	}
-
 }
 
 pub trait RTTFuncs<const N: usize> {
@@ -80,13 +127,15 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 		Self { sample_space, fns }
 	}
 
-	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool, max_step: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
-		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, n_iter_max);
+	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
+				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
+		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_max);
 
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
 	}
 
-	fn grow_tree(&self, start: [f64; N], goal: fn(&[f64; N]) -> bool, max_step: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<usize>) {
+	fn grow_tree(&self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
+				max_step: f64, search_radius: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<usize>) {
 		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new(start);
 		let mut kdtree = KdTree::new(start);
@@ -98,13 +147,45 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 			backtrack(&kd_from.state, &mut new_state, max_step);
 
 			if self.fns.state_validator(&new_state) {
-				if self.fns.transition_validator(&kd_from.state, &new_state) {
-					let new_node_id = rrttree.add_node(new_state, Some(kd_from.id));
-					kdtree.add(new_state, new_node_id);
+				// RRT* algorithm
+				// Step 1: Find the best parent we can get
+				// First, we find the neighbors in a specific radius of new_state.
+				let radius = {
+					let n = rrttree.nodes.len() as f64;
+					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
+					if s < max_step { s } else { max_step }
+				};
 
-					if goal(&new_state) {
-						final_node_ids.push(new_node_id);
+				let neighbour_ids = kdtree.nearest_neighbors(new_state, radius).iter()
+					.filter(|node| self.fns.transition_validator(&node.state, &new_state))
+					.map(|node| node.id)
+					.collect();
+
+				// Evaluate which is the best parent that we can possibly get
+				let distances = rrttree.distances_from_common_ancestor(&neighbour_ids);
+				let (parent_id, parent_distance) = zip(&neighbour_ids, &distances)
+					.map(|(id,d)| (*id, *d))
+					.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+					.unwrap_or((kd_from.id, 0.0));
+
+				// Add the node in the trees
+				let new_node_id = rrttree.add_node(new_state, parent_id);
+				kdtree.add(new_state, new_node_id);
+
+				// Step 2: Perhaps we can reparent some of the neighbours to the new node
+				let new_state_distance = parent_distance + rrttree.nodes[new_node_id].dist_from_parent;
+				for (neighbour_id, distance) in zip(&neighbour_ids, &distances) {
+					if *neighbour_id == parent_id { continue; }
+
+					let neighbour = &rrttree.nodes[*neighbour_id];
+					let new_distance = new_state_distance + self.fns.cost_evaluator(&new_state, &neighbour.state);
+					if new_distance < *distance {
+						rrttree.reparent_node(*neighbour_id, new_node_id);
 					}
+				}
+
+				if goal(&new_state) {
+					final_node_ids.push(new_node_id);
 				}
 			}
 		}
@@ -149,7 +230,7 @@ fn test_plan_empty_space() {
 
 	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, Funcs{});
 
-	let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 1000);
+	let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 1.0, 1000);
 
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
 }
@@ -175,7 +256,7 @@ fn test_plan_on_map() {
 
 	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, Funcs{m});
 
-	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5000);
+	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 5000);
 
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
 	

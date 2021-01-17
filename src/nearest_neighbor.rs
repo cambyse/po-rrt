@@ -77,12 +77,43 @@ impl<const N: usize> KdTree<N> {
 		inner(&mut a, &self.root, 0);
 		a.nearest
 	}
+
+	pub fn nearest_neighbors(&self, state: [f64; N], radius: f64) -> Vec<&KdNode<N>> {
+		struct Args<'a, const N: usize> {
+			state: [f64; N],
+			radius: f64,
+			nearest: Vec<&'a KdNode<N>>,
+		}
+
+		fn inner<'a, const N: usize>(a: &mut Args<'a, N>, from: &'a KdNode<N>, axis: usize) {
+			{
+				let d = norm2(&from.state, &a.state);
+				if d <= a.radius {
+					a.nearest.push(from);
+				}
+			}
+
+			let next_axis = (axis+1) % N;
+
+			if a.state[axis] - a.radius <= from.state[axis] && from.left.is_some() {
+				inner(a, from.left.as_ref().unwrap(), next_axis);
+			}
+			if a.state[axis] + a.radius >= from.state[axis] && from.right.is_some() {
+				inner(a, from.right.as_ref().unwrap(), next_axis);
+			}
+		}
+
+		let mut a = Args { state, radius, nearest: vec![] };
+		inner(&mut a, &self.root, 0);
+		a.nearest
+	}
 }
 
 
 #[cfg(test)]
 mod tests {
 
+use itertools::enumerate;
 use super::*;
 
 // tree creation
@@ -168,29 +199,54 @@ fn test_full_tree() {
 // query nearest neighbors
 #[test]
 fn test_nearest_neighbor() {
-	let mut tree = KdTree::new([3.0, 6.0]);
+	let nodes = [
+		[3.0, 6.0],
+		[17.0, 15.0],
+		[13.0, 15.0],
+		[6.0, 12.0],
+		[9.0, 1.0],
+		[2.0, 7.0],
+		[10.0, 19.0],
+	];
 
-	tree.add([17.0, 15.0], 1);
-	tree.add([13.0, 15.0], 2);
-	tree.add([6.0, 12.0], 3);
-	tree.add([9.0, 1.0], 4);
-	tree.add([2.0, 7.0], 5);
-	tree.add([10.0, 19.0], 6);
+	let centers = [
+		[17.0, 15.0],
+		[9.1, 1.0],
+		[2.0, 8.0],
+		[15.0, 13.0],
+		[3.0, 5.0],
+		[13.0, 7.0],
+	];
 
-	{
-		let node = tree.nearest_neighbor([17.0, 15.0]);
-		assert_eq!(node.state, [17.0, 15.0]);
+	let mut tree = KdTree::new(nodes[0]);
+	for (i,node) in enumerate(&nodes[1..]) {
+		tree.add(*node, i+1);
 	}
 
-	{
-		let node = tree.nearest_neighbor([9.1, 1.0]);
-		assert_eq!(node.state, [9.0, 1.0]);
+	for center in &centers {
+		let mut node_dists = enumerate(&nodes)
+			.map(|(id,node)| (id, norm2(&node, &center)))
+			.collect::<Vec::<_>>();
+		node_dists.sort_by(|(_,a),(_,b)| a.partial_cmp(b).unwrap());
+
+		// test nearest_neighbor
+		let node = tree.nearest_neighbor(*center);
+		assert_eq!(node.id, node_dists[0].0);
+
+		// test nearest_neighbors
+		for radius in 1..10 {
+			let radius = radius as f64;
+			let mut nearest = node_dists.iter()
+				.take_while(|(_,d)| *d <= radius)
+				.map(|(n,_)| *n)
+				.collect::<Vec<_>>();
+			nearest.sort();
+			let mut nearest_computed = tree.nearest_neighbors(*center, radius)
+				.iter().map(|node| node.id).collect::<Vec<_>>();
+			nearest_computed.sort();
+			assert_eq!(nearest, nearest_computed);
+		}
 	}
-	 
-	{
-		let node = tree.nearest_neighbor([2.0, 8.0]);
-		assert_eq!(node.state, [2.0, 7.0]);
-	}	
 }
 
 /*
