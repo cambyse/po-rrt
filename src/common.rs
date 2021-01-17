@@ -25,7 +25,7 @@ pub fn norm2<const N: usize>(a: &[f64; N], b: &[f64; N]) -> f64 {
 	d2.sqrt()
 }
 
-pub fn backtrack<const N: usize>(from: &[f64;N], to: &mut [f64;N], max_step: f64) -> [f64; N] {
+pub fn backtrack<const N: usize>(from: &[f64;N], to: &mut [f64;N], max_step: f64) {
 	let step = norm1(from, &to);
 
 	if step > max_step {
@@ -34,8 +34,6 @@ pub fn backtrack<const N: usize>(from: &[f64;N], to: &mut [f64;N], max_step: f64
 			to[i] = from[i] + (to[i] - from[i]) * lambda;
 		}
 	}
-
-	*to
 }
 
 pub fn pairwise_iter<T>(v: &Vec<T>) -> Zip<Iter<T>, Iter<T>> {
