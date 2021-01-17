@@ -94,7 +94,7 @@ impl<const N: usize> RRTTree<N> {
 	}
 }
 
-pub trait RTTFuncs<const N: usize> {
+pub trait RRTFuncs<const N: usize> {
 	fn state_validator(&self, _state: &[f64; N]) -> bool {
 		true
 	}
@@ -108,12 +108,12 @@ pub trait RTTFuncs<const N: usize> {
 	}
 }
 
-pub struct RRT<F: RTTFuncs<N>, const N: usize> {
+pub struct RRT<F: RRTFuncs<N>, const N: usize> {
 	sample_space: SampleSpace<N>,
 	fns: F,
 }
 
-impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
+impl<F: RRTFuncs<N>, const N: usize> RRT<F, N> {
 	pub fn new(sample_space: SampleSpace<N>, fns: F) -> Self {
 		Self { sample_space, fns }
 	}
@@ -219,7 +219,7 @@ use super::*;
 #[test]
 fn test_plan_empty_space() {
 	struct Funcs {}
-	impl RTTFuncs<2> for Funcs {}
+	impl RRTFuncs<2> for Funcs {}
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.9).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
@@ -241,7 +241,7 @@ fn test_plan_on_map() {
 		m: Map,
 	}
 
-	impl RTTFuncs<2> for Funcs {
+	impl RRTFuncs<2> for Funcs {
 		fn state_validator(&self, state: &[f64; 2]) -> bool {
 			self.m.is_state_valid(state)
 		}
