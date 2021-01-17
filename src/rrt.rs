@@ -108,18 +108,18 @@ pub trait RRTFuncs<const N: usize> {
 	}
 }
 
-pub struct RRT<F: RRTFuncs<N>, const N: usize> {
+pub struct RRT<'a, F: RRTFuncs<N>, const N: usize> {
 	sample_space: SampleSpace<N>,
-	fns: F,
+	fns: &'a F,
 }
 
-impl<F: RRTFuncs<N>, const N: usize> RRT<F, N> {
-	pub fn new(sample_space: SampleSpace<N>, fns: F) -> Self {
+impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
+	pub fn new(sample_space: SampleSpace<N>, fns: &'a F) -> Self {
 		Self { sample_space, fns }
 	}
 
 	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
-				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
+				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &'static str>, RRTTree<N>) {
 		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_max);
 
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
@@ -135,7 +135,7 @@ impl<F: RRTFuncs<N>, const N: usize> RRT<F, N> {
 			let mut new_state = self.sample_space.sample();
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
-			backtrack(&kd_from.state, &mut new_state, max_step);
+			steer(&kd_from.state, &mut new_state, max_step);
 
 			if self.fns.state_validator(&new_state) {
 				// RRT* algorithm
@@ -187,12 +187,10 @@ impl<F: RRTFuncs<N>, const N: usize> RRT<F, N> {
 			}
 		}
 
-		//println!("number of final nodes: {}", final_nodes.len());
-
 		(rrttree, final_node_ids)
 	}
 
-	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &Vec<usize>) -> Result<Vec<[f64; N]>, &str> {
+	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &Vec<usize>) -> Result<Vec<[f64; N]>, &'static str> {
 		final_node_ids.iter()
 			.map(|id| {
 				let path = rrttree.get_path_to(*id);
@@ -225,39 +223,24 @@ fn test_plan_empty_space() {
 		(state[0] - 0.9).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, Funcs{});
+	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &Funcs{});
 
 	let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 1.0, 1000);
-
-	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
+	assert!(path_result.as_ref().expect("No path found!").len() > 2);
 }
 
 #[test]
 fn test_plan_on_map() {
-	let m = Map::open("data/map3.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	let m2 = m.clone();
-
-	struct Funcs {
-		m: Map,
-	}
-
-	impl RRTFuncs<2> for Funcs {
-		fn state_validator(&self, state: &[f64; 2]) -> bool {
-			self.m.is_state_valid(state)
-		}
-	}
+	let mut m = Map::open("data/map3.pgm", [-1.0, -1.0], [1.0, 1.0]);
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, Funcs{m});
-
+	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &m);
 	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 5000);
 
-	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
-	
-	let mut m = m2;
+	assert!(path_result.as_ref().expect("No path found!").len() > 2);
 	m.draw_tree(&rrttree);
 	m.draw_path(path_result.unwrap());
 	m.save("results/test_plan_on_map.pgm")

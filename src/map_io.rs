@@ -1,4 +1,4 @@
-use crate::{rrt::RRTTree};
+use crate::{rrt::{RRTFuncs, RRTTree}};
 use image::Luma;
 use image::DynamicImage::ImageLuma8;
 use core::f64;
@@ -109,6 +109,13 @@ impl Map {
 		}
 	}
 } 
+
+impl RRTFuncs<2> for Map {
+	fn state_validator(&self, state: &[f64; 2]) -> bool {
+		self.is_state_valid(state)
+	}
+}
+
 
 pub enum Belief {
 	Always(bool),
