@@ -1,10 +1,10 @@
-use itertools::{all, izip, zip};
+use itertools::{all, enumerate, izip, merge, zip};
 
 use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
-use std::{any, cmp::min, collections::BTreeMap, vec::Vec};
+use std::{any, cmp::min, collections::{BTreeMap, HashMap, HashSet}, convert::From, vec::Vec};
 use core::cell::RefCell;
 use std::rc::{Weak, Rc};
 
@@ -46,36 +46,125 @@ impl<const N: usize> RRTTree<N> {
 			return vec![0.0];
 		}
 
+		fn compute_distance_from_root<const N: usize>(tree: &RRTTree<N>, node_id: usize) -> f64 {
+			if node_id == 0 {
+				0.0
+			} else {
+				let node = &tree.nodes[node_id];
+				let parent_id = node.parent_id.unwrap();
+				compute_distance_from_root(tree, parent_id) + node.dist_from_parent
+			}
+		}
+
+		leaf_ids.iter()
+			.map(|id| compute_distance_from_root(&self, *id))
+			.collect()
+	}
+
+	fn distances_from_common_ancestor2(&self, leaf_ids: &Vec<usize>) -> Vec<f64> {
+		if leaf_ids.is_empty() {
+			return vec![];
+		}
+
+		if leaf_ids.len() == 1 {
+			return vec![0.0];
+		}
+
 		// We get a list of leaves. For each leaf, we go up the ancestor chain,
 		// until we hit the root, and compute the distance from the root.
 		// It would be more efficient to stop at the common ancestor, but we don't
 		// know which one it is.
 
-		fn compute_distance_from_root<const N: usize>(
-				tree: &RRTTree<N>,
-				distances_from_root: &mut BTreeMap<usize, f64>,
-				node_id: usize) -> f64 {
-			if node_id == 0 {
-				return 0.0;
-			}
-
-			if let Some(d) = distances_from_root.get(&node_id) {
-				return *d;
-			}
-
-			let node = &tree.nodes[node_id];
-			let parent_id = node.parent_id.unwrap();
-
-			let d = compute_distance_from_root(tree, distances_from_root, parent_id) + node.dist_from_parent;
-			distances_from_root.insert(node_id, d);
-
-			return d;
+		struct Path {
+			index: usize,
+			head_id: usize,
+			cost: f64,
+			merge_point: Option<Visit>,
 		}
 
-		let mut distances_from_root = BTreeMap::new();
-		leaf_ids.iter()
-			.map(|id| compute_distance_from_root(&self, &mut distances_from_root, *id))
-			.collect::<Vec<_>>()
+		#[derive(Clone)]
+		struct Visit {
+			path_index: usize,
+			cost: f64,
+		}
+
+		let mut paths = leaf_ids.iter()
+			.enumerate()
+			.map(|(index, head_id)| Path { index, head_id: *head_id, cost: 0.0, merge_point: None })
+			.collect::<Vec<_>>();
+
+		// all the visited nodes are stored in visits. This allows us to see
+		// when two paths are merging.
+		let mut visits = HashMap::<usize, Visit>::new();
+		fn register_visit(visits: &mut HashMap::<usize, Visit>, path: &Path) {
+			let visit = Visit { path_index: path.index, cost: path.cost };
+			visits.insert(path.head_id, visit);
+		}
+
+		for path in &paths {
+			register_visit(&mut visits, path);
+		}
+
+		// live_path are paths that are useful to explore up.
+		// once a path merges with another one, we take it out from the live_path.
+		// if a path reaches the root, we also take it out from the live path array.
+		let mut live_paths = paths.iter_mut().collect::<Vec<_>>();
+
+		// If one of the path reached the root, we still need all the other paths to
+		// merge with that path.
+		// Otherwise, we can stop as soon as we have a single path left (no need to reach the root).
+		let mut found_root = false;
+		while live_paths.len() > if found_root { 0 } else { 1 } {
+			let mut new_live_paths = Vec::with_capacity(live_paths.len());
+			for path in live_paths.drain(..) {
+				let head = &self.nodes[path.head_id];
+				if let Some(parent_id) = head.parent_id {
+					// check if we already visited that node
+					path.cost += head.dist_from_parent;
+					path.head_id = parent_id;
+					if let Some(visit) = visits.get(&parent_id) {
+						path.merge_point = Some(visit.clone());
+					} else {
+						register_visit(&mut visits, path);
+						new_live_paths.push(path);
+					}
+				} else {
+					// we got back to the root. this is no longer a path we should
+					// persue. We let other paths bubble up and merge.
+					found_root = true;
+				}
+			}
+
+			let _ = std::mem::replace(&mut live_paths, new_live_paths);
+		}
+
+		assert_eq!(paths.iter().filter(|p| p.merge_point.is_none()).count(), 1);
+
+		// All paths have merged, computing all relative costs
+		let mut results = vec![None; paths.len()];
+		fn compute_cost(results: &mut Vec::<Option<f64>>, paths: &Vec<Path>, path: &Path) -> f64 {
+			if let Some(cost) = results[path.index] {
+				return cost;
+			}
+
+			let cost = if let Some(merge_point) = path.merge_point.as_ref() {
+				let parent_path = &paths[merge_point.path_index];
+				compute_cost(results, paths, parent_path) - merge_point.cost + path.cost
+			} else {
+				// This is the common ancestor
+				path.cost
+			};
+
+			results[path.index] = Some(cost);
+			cost
+		}
+		for path in &paths {
+			compute_cost(&mut results, &paths, path);
+		}
+
+		results.iter()
+			.map(|c| c.expect("cost comparison failed"))
+			.collect()
 	}
 
 	fn get_path_to(&self, id: usize) -> Vec<[f64; N]> {
