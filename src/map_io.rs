@@ -116,41 +116,11 @@ impl RRTFuncs<2> for Map {
 	}
 }
 
-
+#[derive(Debug, PartialEq)]
 pub enum Belief {
 	Always(bool),
 	Choice(usize, f64),
 }
-
-/*
-#[derive(Clone)]
-pub struct MultiMap
-{
-	map: Map,
-	priors: Vec<f64>,
-}*/
-
-
-/* 
-impl MultiMap {
-	pub fn open(filepaths : &[&str], priors: Vec<f64>, low: [f64; 2], up: [f64; 2]) -> Self
-	{
-		assert_eq!(filepaths.len(), priors.len());
-
-		let maps = filepaths.iter()
-			.map(|path| Map::open(path, low.clone(), up.clone()))
-			.collect();
-		Self { maps, priors }
-	}
-
-	pub fn is_state_valid(&self, xy: &[f64; 2], index: usize) -> bool {
-		self.maps[index].is_state_valid(xy)
-	}
-
-	pub fn is_state_valid(&self, xy: &[f64; 2]) -> Belief {
-		
-	}
-}*/
 
 #[cfg(test)]
 mod tests {
@@ -158,14 +128,6 @@ mod tests {
 use super::*;
 use std::fs;
 use std::path::Path;
-   
-#[test]
-fn open_images() {
-		let mut map = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-		map.add_zones("data/map2_zones.pgm");
-
-		map.is_state_valid_2(&[0.0, 0.0]);
-	}
 
 #[test]
 fn open_image() {
@@ -182,6 +144,16 @@ fn test_valid_state() {
 fn test_invalid_state() {
 		let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
 		assert!(!m.is_state_valid(&[0.0, 0.6]));
+	}
+
+#[test]
+fn test_uncertain_states() {
+		let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+		map.add_zones("data/map2_zone_ids.pgm");
+
+		assert_eq!(map.is_state_valid_2(&[0.0, 0.0]), Belief::Always(true));
+		assert_eq!(map.is_state_valid_2(&[0.0, -0.24]), Belief::Always(false));
+		assert_eq!(map.is_state_valid_2(&[-0.67, -0.26]), Belief::Choice(1, 128.0/255.0));
 	}
 
 #[test]
