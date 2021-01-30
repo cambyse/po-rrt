@@ -1,4 +1,4 @@
-use crate::{rrt_star::{RRTFuncs, RRTTree}};
+use crate::{rrt::{RRTFuncs, RRTTree}};
 use crate::{prm::{PRMFuncs, PRMGraph, PRMNode}};
 use image::Luma;
 use image::DynamicImage::ImageLuma8;
@@ -213,6 +213,22 @@ impl Map {
 			}
 
 			visited.insert(from_id);
+		}
+	}
+
+	pub fn set_world(&mut self, world_id:usize) {
+		for i in 0..self.zones.as_ref().unwrap().height() {
+			for j in 0..self.zones.as_ref().unwrap().width() {
+				let z = self.get_zone_index(&[i, j]);
+
+				match z {
+					Some(zone_id) => {
+							let color = if self.zones_to_worlds[zone_id][world_id] { 255 } else { 0 };
+							self.img.put_pixel(j, i, Luma([color]));
+					},
+					None => {}
+				}
+			}
 		}
 	}
 } 

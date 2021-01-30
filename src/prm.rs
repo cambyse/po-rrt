@@ -160,19 +160,30 @@ fn test_plan_on_map() {
 	full.draw_full_graph(&graph);
 	full.save("results/test_prm_full_graph.pgm");
 
+	let world = 3;
 	let mut from = m.clone();
-	from.draw_graph_for_world(&graph, 3);
+	from.set_world(world);
+	from.draw_graph_for_world(&graph, world);
 	from.save("results/test_prm_graph_from.pgm");
 }
 }
 
 /*
 * PLAN()
-* - Pour chaque monde, calculer la distance à l'objectif de chaque node (Value iteration)
+* Option 1/ Pour chaque monde, calculer la distance à l'objectif de chaque node (Value iteration)
+* 	-> avantage : valeurs valables partout
+*   -> long calcul offline - scalability?
+*   d(n) = min( d(m, n) + d(m) for m in children(n) )
+*
+* Option 2/ Au runtime, calculer meilleur chemin pour chacun des mondes (e.g. A*) et prendre decision en pondérant chacunes des options 
+*	-> avantage : étape offline moins longue
+*   -> possible à l'exécution ? (assez rapide?)
+*
+* Option 3/ Monte Carlo
 *
 * EXECUTION()
 * - Robot a un belief state : probabilité d'être dans chaque monde
-* - Deduit le chemin a suivre en cherchant en calculant l'espérance de la distance 'a l'objectif de chacun de ces enfants
+* - Deduit le chemin a suivre en cherchant en calculant l'espérance de la distance à l'objectif de chacun de ces enfants
 *
 * QUESTIONS:
 * - Quand arreter de faire croitre le graph et quand même avoir une solution our chaque monde??
