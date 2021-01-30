@@ -212,7 +212,7 @@ fn test_plan_empty_space() {
 
 #[test]
 fn test_plan_on_map() {
-	let mut m = Map::open("data/map3.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	let mut m = Map::open("data/rrt_map_0.pgm", [-1.0, -1.0], [1.0, 1.0]);
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05

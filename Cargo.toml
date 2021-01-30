@@ -10,6 +10,7 @@ edition = "2018"
 rand = "0.5.5"
 itertools = "0.8"
 image = "0.23.12"
+queues = "1.0.2"
 
 [dev-dependencies]
 criterion = "0.3"
