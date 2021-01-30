@@ -102,7 +102,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					.map(|node| node.id)
 					.collect();
 				
-				// Third, connect to neighbors if state transition allows
+				// Third, connect to neighbors if transition possible
 				for neighbor_id in neighbour_ids {
 					let neighbor_state = &graph.nodes[neighbor_id].state;
 					if self.fns.transition_validator(&neighbor_state, &new_state) {
@@ -156,11 +156,11 @@ fn test_plan_on_map() {
 	let mut prm = PRM::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &m);
 	let (_, graph) = prm.plan([0.55, -0.8], goal, 0.05, 5.0, 2500);
 
-	let mut full = m.clone();
-	full.draw_full_graph(&graph);
-	full.save("results/test_prm_full_graph.pgm");
+	//let mut full = m.clone();
+	//full.draw_full_graph(&graph);
+	//full.save("results/test_prm_full_graph.pgm");
 
-	let world = 3;
+	let world = 1;
 	let mut from = m.clone();
 	from.set_world(world);
 	from.draw_graph_for_world(&graph, world);
@@ -187,4 +187,5 @@ fn test_plan_on_map() {
 *
 * QUESTIONS:
 * - Quand arreter de faire croitre le graph et quand même avoir une solution our chaque monde??
+* - Biais pour sampling basé sur heristique
 */
