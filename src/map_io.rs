@@ -193,14 +193,14 @@ impl Map {
 
 		let mut visited = HashSet::new();
 		let mut queue: Queue<usize> = queue![];
+		visited.insert(0);
 		queue.add(0).expect("Overflow!");
 
 		while queue.size() > 0 {
-			let from_id = queue.peek().unwrap();
+			let from_id = queue.remove().unwrap();
 			let from = &graph.nodes[from_id];
-			queue.remove().unwrap();
 
-			for to_id in from.children.clone() {
+			for &to_id in &from.children {
 				let to = &graph.nodes[to_id];
 
 				if to.validity[world] {
@@ -208,11 +208,10 @@ impl Map {
 
 					if !visited.contains(&to_id) {
 						queue.add(to_id).expect("Overflow");
+						visited.insert(to_id);
 					}
 				}
 			}
-
-			visited.insert(from_id);
 		}
 	}
 

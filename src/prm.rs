@@ -4,7 +4,7 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
-use std::cmp::min;
+use std::{cmp::min, vec};
 
 
 pub struct PRMNode<const N: usize> {
@@ -58,41 +58,38 @@ pub trait PRMFuncs<const N: usize> {
 pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	sample_space: SampleSpace<N>,
 	fns: &'a F,
+	graph: PRMGraph<N>
 }
 
 impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn new(sample_space: SampleSpace<N>, fns: &'a F) -> Self {
-		Self { sample_space, fns }
+		Self { sample_space, fns, graph: PRMGraph{nodes: vec![]} }
 	}
 
-	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
-				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &'static str>, PRMGraph<N>) {
-		let (graph, final_node_ids) = self.grow_graph(start, goal, max_step, search_radius, n_iter_max);
+	pub fn grow_graph(&mut self, start: &[f64; N],
+				max_step: f64, search_radius: f64, n_iter_max: u32) {
+		let mut kdtree = KdTree::new(*start);
+		self.graph.add_node(*start, self.fns.state_validity(&start).expect("Start from a valid state!"));
 
-		(self.get_best_solution(&graph, &final_node_ids), graph)
-	}
+		for i in 0..n_iter_max {
+			if i % 100 == 0 {
+				println!("number of iterations:{}", i);
+			}
 
-	fn grow_graph(&self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
-				max_step: f64, search_radius: f64, n_iter_max: u32) -> (PRMGraph<N>, Vec<usize>) {
-		let mut final_node_ids = Vec::<usize>::new();
-		let mut graph = PRMGraph::new(start);
-		let mut kdtree = KdTree::new(start);
-
-		for _ in 0..n_iter_max {
 			let mut new_state = self.sample_space.sample();
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
-			steer(&kd_from.state, &mut new_state, max_step);
+			steer(&kd_from.state, &mut new_state, max_step); 
 
 			let state_validity = self.fns.state_validity(&new_state);
 			if state_validity.is_some() {
 				// First, add node
-				let new_node_id = graph.add_node(new_state, state_validity.unwrap());
+				let new_node_id = self.graph.add_node(new_state, state_validity.unwrap());
 				kdtree.add(new_state, new_node_id);
 
 				// Second, we find the neighbors in a specific radius of new_state.
 				let radius = {
-					let n = graph.nodes.len() as f64;
+					let n = self.graph.nodes.len() as f64;
 					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
 					if s < max_step { s } else { max_step }
 				};
@@ -104,32 +101,17 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				
 				// Third, connect to neighbors if transition possible
 				for neighbor_id in neighbour_ids {
-					let neighbor_state = &graph.nodes[neighbor_id].state;
+					let neighbor_state = &self.graph.nodes[neighbor_id].state;
 					if self.fns.transition_validator(&neighbor_state, &new_state) {
-						graph.add_edge(neighbor_id, new_node_id);
+						self.graph.add_edge(neighbor_id, new_node_id);
 					}
-				}
-
-				if goal(&new_state) {
-					final_node_ids.push(new_node_id);
 				}
 			}
 		}
-
-		(graph, final_node_ids)
 	}
 
-	fn get_best_solution(&self, _: &PRMGraph<N>, _: &Vec<usize>) -> Result<Vec<[f64; N]>, &'static str> {
+	pub fn plan(&mut self, start: &[f64; N], prior: &Vec<f64>) -> Result<Vec<[f64; N]>, &'static str> {
 		Err("")
-		/*final_node_ids.iter()
-			.map(|id| {
-				let path = rrttree.get_path_to(*id);
-				let cost = self.get_path_cost(&path);
-				(path, cost)
-			})
-			.min_by(|(_,a),(_,b)| a.partial_cmp(b).expect("NaN found"))
-			.map(|(p, _)| p)
-			.ok_or("No solution found")*/
 	}
 
 	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
@@ -154,21 +136,27 @@ fn test_plan_on_map() {
 	}
 
 	let mut prm = PRM::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &m);
-	let (_, graph) = prm.plan([0.55, -0.8], goal, 0.05, 5.0, 2500);
+	prm.grow_graph(&[0.55, -0.8], 0.05, 5.0, 10_000);
+	
+	prm.plan(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
 
+	// loop:
+	// prm.plan(position, prior);
+	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
+	
 	//let mut full = m.clone();
 	//full.draw_full_graph(&graph);
 	//full.save("results/test_prm_full_graph.pgm");
 
-	let world = 1;
+	let world = 1; 
 	let mut from = m.clone();
 	from.set_world(world);
-	from.draw_graph_for_world(&graph, world);
+	from.draw_graph_for_world(&prm.graph, world);
 	from.save("results/test_prm_graph_from.pgm");
 }
 }
 
-/*
+/* N = nombre de mondes
 * PLAN()
 * Option 1/ Pour chaque monde, calculer la distance à l'objectif de chaque node (Value iteration)
 * 	-> avantage : valeurs valables partout
@@ -179,13 +167,21 @@ fn test_plan_on_map() {
 *	-> avantage : étape offline moins longue
 *   -> possible à l'exécution ? (assez rapide?)
 *
-* Option 3/ Monte Carlo
+* Option 3/ Monte Carlo -> N
+* 
+* Option 4/ N mondes: RRT start N fois
+* 
 *
 * EXECUTION()
 * - Robot a un belief state : probabilité d'être dans chaque monde
 * - Deduit le chemin a suivre en cherchant en calculant l'espérance de la distance à l'objectif de chacun de ces enfants
 *
+* Belief state : [0.25, 0.25, 0.25, 0.25] 
+* 
+*
 * QUESTIONS:
 * - Quand arreter de faire croitre le graph et quand même avoir une solution our chaque monde??
 * - Biais pour sampling basé sur heristique
 */
+
+// Compresser pour avoir N mondes même dan domaines ou le nombre de mondes explosent
