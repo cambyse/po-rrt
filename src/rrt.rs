@@ -44,18 +44,18 @@ impl<const N: usize> RRTTree<N> {
 			return vec![0.0];
 		}
 
-		fn compute_distance_from_root<const N: usize>(tree: &RRTTree<N>, node_id: usize) -> f64 {
-			if node_id == 0 {
-				0.0
-			} else {
-				let node = &tree.nodes[node_id];
-				let parent_id = node.parent_id.unwrap();
-				compute_distance_from_root(tree, parent_id) + node.dist_from_parent
+		let compute_distance_from_root = |mut node_id: usize| {
+			let mut cost = 0.0;
+			while node_id != 0 {
+				let node = &self.nodes[node_id];
+				cost += node.dist_from_parent;
+				node_id = node.parent_id.unwrap();
 			}
-		}
+			cost
+		};
 
 		leaf_ids.iter()
-			.map(|id| compute_distance_from_root(&self, *id))
+			.map(|id| compute_distance_from_root(*id))
 			.collect()
 	}
 
