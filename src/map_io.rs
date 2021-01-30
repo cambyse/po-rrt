@@ -92,7 +92,7 @@ impl Map {
 		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new()}
 	}
 
-	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: u8) {
+	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], _: u8) {
 		let a_ij = self.to_pixel_coordinates(&a);
 		let b_ij = self.to_pixel_coordinates(&b);
 
@@ -107,7 +107,8 @@ impl Map {
 			let i = (a_ij[0] as i32 + (lambda * ((b_ij[0] as f64) - (a_ij[0] as f64))) as i32) as u32;
 			let j = (a_ij[1] as i32+ (lambda * ((b_ij[1] as f64) - (a_ij[1] as f64))) as i32) as u32;
 			
-			self.img.put_pixel(j, i, Luma([color]));
+			let c = if s < n/2 { 50 } else { 200 };
+			self.img.put_pixel(j, i, Luma([c]));
 		}
 	}
 
@@ -177,11 +178,13 @@ impl Map {
 		}
 	}
 
-	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>) {
+	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>, world:usize) {
 		for from in &graph.nodes {
 			for to_id in from.children.clone() {
 				let to  = &graph.nodes[to_id];
-				self.draw_line(from.state, to.state, 100);
+				if to.validity[world] && from.validity[world] {
+					self.draw_line(from.state, to.state, 100);
+				}
 			}
 		}
 	}
@@ -245,6 +248,11 @@ impl PRMFuncs<2> for Map {
 			Belief::Always(true) => {Some(vec![true; self.n_worlds()])},
 			Belief::Always(false) => None
 		}
+	}
+
+	fn transition_validator(&self, from: &PRMNode<2>, to:&PRMNode<2>) -> bool {
+		from.validity.iter().zip(&to.validity)
+		.any(|(&a, &b)| a && b)
 	}
 }
 

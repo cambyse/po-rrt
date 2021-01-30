@@ -4,7 +4,7 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
-use std::{cmp::min, vec};
+use std::{borrow::Borrow, cmp::min, vec};
 
 
 pub struct PRMNode<const N: usize> {
@@ -46,7 +46,7 @@ pub trait PRMFuncs<const N: usize> {
 		None
 	}
 
-	fn transition_validator(&self, _from: &[f64; N], _to: &[f64; N]) -> bool {
+	fn transition_validator(&self, _from: &PRMNode<N>, _to: &PRMNode<N>) -> bool {
 		true
 	}
 
@@ -77,7 +77,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			}
 
 			let mut new_state = self.sample_space.sample();
-			let kd_from = kdtree.nearest_neighbor(new_state);
+			let kd_from = kdtree.nearest_neighbor(new_state); // n log n
 
 			steer(&kd_from.state, &mut new_state, max_step); 
 
@@ -85,32 +85,45 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			if state_validity.is_some() {
 				// First, add node
 				let new_node_id = self.graph.add_node(new_state, state_validity.unwrap());
-				kdtree.add(new_state, new_node_id);
+				let new_node = &self.graph.nodes[new_node_id];
 
 				// Second, we find the neighbors in a specific radius of new_state.
-				let radius = {
+				let mut radius = {
 					let n = self.graph.nodes.len() as f64;
 					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
 					if s < max_step { s } else { max_step }
 				};
 
 				let neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
-					.filter(|node| self.fns.transition_validator(&node.state, &new_state))
-					.map(|node| node.id)
+					.map(|kd_node| (kd_node.id, &self.graph.nodes[kd_node.id]))	
+					.filter(|(id, node)| self.fns.transition_validator(node, new_node))
+					.map(|(id, _)| id)
 					.collect();
 				
+				/*if neighbour_ids.is_empty() {
+					panic!("bgdifosiodl");
+				}*/
+
 				// Third, connect to neighbors if transition possible
 				for neighbor_id in neighbour_ids {
-					let neighbor_state = &self.graph.nodes[neighbor_id].state;
-					if self.fns.transition_validator(&neighbor_state, &new_state) {
+					//let neighbor_state = &self.graph.nodes[neighbor_id].state;
+					//if self.fns.transition_validator(&neighbor_state, &new_state) {
+					{
 						self.graph.add_edge(neighbor_id, new_node_id);
+
 					}
+					/*let neighbor_state = &self.graph.nodes[neighbor_id].state;
+					if self.fns.transition_validator(&new_state, &neighbor_state) {
+						self.graph.add_edge(new_node_id, neighbor_id);
+					}*/
 				}
+
+				kdtree.add(new_state, new_node_id);
 			}
 		}
 	}
 
-	pub fn plan(&mut self, start: &[f64; N], prior: &Vec<f64>) -> Result<Vec<[f64; N]>, &'static str> {
+	pub fn plan(&mut self, _: &[f64; N], _: &Vec<f64>) -> Result<Vec<[f64; N]>, &'static str> {
 		Err("")
 	}
 
@@ -136,23 +149,26 @@ fn test_plan_on_map() {
 	}
 
 	let mut prm = PRM::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &m);
-	prm.grow_graph(&[0.55, -0.8], 0.05, 5.0, 10_000);
+	prm.grow_graph(&[0.55, -0.8], 0.05, 5.0, 2500);
 	
-	prm.plan(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
+	let _ = prm.plan(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
 
 	// loop:
 	// prm.plan(position, prior);
 	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
 	
-	//let mut full = m.clone();
-	//full.draw_full_graph(&graph);
-	//full.save("results/test_prm_full_graph.pgm");
-
 	let world = 1; 
+	let mut full = m.clone();
+	full.set_world(world);
+	full.draw_full_graph(&prm.graph, world);
+	//full.draw_graph_for_world(&prm.graph, world);
+	full.save("results/test_prm_graph_from.pgm");
+
+	/*let world = 0; 
 	let mut from = m.clone();
 	from.set_world(world);
 	from.draw_graph_for_world(&prm.graph, world);
-	from.save("results/test_prm_graph_from.pgm");
+	from.save("results/test_prm_graph_from.pgm");*/
 }
 }
 
