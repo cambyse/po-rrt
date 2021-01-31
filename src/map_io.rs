@@ -1,5 +1,5 @@
 use crate::{rrt::{RRTFuncs, RRTTree}};
-use crate::{prm::{PRMFuncs, PRMGraph, PRMNode}};
+use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use image::Luma;
 use image::DynamicImage::ImageLuma8;
 use core::f64;
@@ -248,11 +248,6 @@ impl PRMFuncs<2> for Map {
 			Belief::Always(true) => {Some(vec![true; self.n_worlds()])},
 			Belief::Always(false) => None
 		}
-	}
-
-	fn transition_validator(&self, from: &PRMNode<2>, to:&PRMNode<2>) -> bool {
-		from.validity.iter().zip(&to.validity)
-		.any(|(&a, &b)| a && b)
 	}
 }
 

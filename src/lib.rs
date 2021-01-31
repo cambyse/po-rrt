@@ -6,3 +6,4 @@ pub mod map_io;
 pub mod nearest_neighbor;
 pub mod rrt;
 pub mod prm;
+pub mod prm_graph;
