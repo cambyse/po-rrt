@@ -4,8 +4,79 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
-use std::{borrow::Borrow, cmp::min, vec};
 
+/*****************************IO*****************************/
+mod io {
+	use std::{borrow::Borrow, cmp::min, convert::TryInto, vec};
+	use std::io::BufWriter;
+	use std::io::BufReader;
+	use std::fs::File;
+	
+	extern crate serde;
+	use serde::{Serialize, Deserialize};
+
+	use super::*;
+
+#[derive(Serialize, Deserialize)]
+pub struct SerializablePRMNode {
+	pub state: Vec<f64>,
+	pub validity: Vec<bool>,
+	pub children: Vec<usize>,
+}
+
+impl SerializablePRMNode {
+	pub fn from_prm_node(node : &PRMNode<2>) -> Self {
+		Self{
+			state: node.state.to_vec(),
+			validity: node.validity.clone(),
+			children: node.children.clone()
+		}
+	}
+
+	pub fn to_prm_node(&self) -> PRMNode<2> {
+		PRMNode {
+			state: self.state.clone().try_into().unwrap(),
+			validity: self.validity.clone(),
+			children: self.children.clone(),
+		}
+	}
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SerializablePRMGraph {
+	pub nodes: Vec<SerializablePRMNode>,
+}
+
+impl SerializablePRMGraph {
+	pub fn from_prm_graph_(prm_graph: &PRMGraph<2>) -> SerializablePRMGraph {
+		let nodes = &prm_graph.nodes;
+		SerializablePRMGraph {
+			nodes: nodes.into_iter().map(|node| SerializablePRMNode::from_prm_node(&node)).collect()
+		}
+	}
+
+	pub fn save_(&self, filename: &str) {
+		let writer = BufWriter::new(File::create(filename).unwrap());
+		serde_json::to_writer_pretty(writer, &self).unwrap();
+	}
+}
+
+	pub fn save(prm_graph: &PRMGraph<2>, filename: &str) {
+		let graph = SerializablePRMGraph::from_prm_graph_(prm_graph);
+		graph.save_(filename);
+	}
+
+	pub fn load(filename: &str) -> PRMGraph<2> {
+		let reader = BufReader::new(File::open(filename).unwrap());
+		let graph: SerializablePRMGraph = serde_json::from_reader(reader).unwrap();
+
+		PRMGraph {
+			nodes: graph.nodes.into_iter().map(|node| node.to_prm_node()).collect()
+		}
+	}
+}
+
+/************************************************************/
 
 pub struct PRMNode<const N: usize> {
 	pub state: [f64; N],
@@ -88,7 +159,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				let new_node = &self.graph.nodes[new_node_id];
 
 				// Second, we find the neighbors in a specific radius of new_state.
-				let mut radius = {
+				let radius = {
 					let n = self.graph.nodes.len() as f64;
 					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
 					if s < max_step { s } else { max_step }
@@ -96,22 +167,13 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 				let neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
 					.map(|kd_node| (kd_node.id, &self.graph.nodes[kd_node.id]))	
-					.filter(|(id, node)| self.fns.transition_validator(node, new_node))
+					.filter(|(_, node)| self.fns.transition_validator(node, new_node))
 					.map(|(id, _)| id)
 					.collect();
-				
-				/*if neighbour_ids.is_empty() {
-					panic!("bgdifosiodl");
-				}*/
 
 				// Third, connect to neighbors if transition possible
 				for neighbor_id in neighbour_ids {
-					//let neighbor_state = &self.graph.nodes[neighbor_id].state;
-					//if self.fns.transition_validator(&neighbor_state, &new_state) {
-					{
-						self.graph.add_edge(neighbor_id, new_node_id);
-
-					}
+					self.graph.add_edge(neighbor_id, new_node_id);
 					/*let neighbor_state = &self.graph.nodes[neighbor_id].state;
 					if self.fns.transition_validator(&new_state, &neighbor_state) {
 						self.graph.add_edge(new_node_id, neighbor_id);
@@ -156,13 +218,17 @@ fn test_plan_on_map() {
 	// loop:
 	// prm.plan(position, prior);
 	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
-	
+
+	io::save(&prm.graph, "results/prm.json");
+	prm.graph = io::load("results/prm.json");
+
 	let world = 1; 
 	let mut full = m.clone();
 	full.set_world(world);
 	full.draw_full_graph(&prm.graph, world);
 	//full.draw_graph_for_world(&prm.graph, world);
 	full.save("results/test_prm_graph_from.pgm");
+
 
 	/*let world = 0; 
 	let mut from = m.clone();
