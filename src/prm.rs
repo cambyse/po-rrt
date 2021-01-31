@@ -56,8 +56,8 @@ impl SerializablePRMGraph {
 	}
 
 	pub fn save_(&self, filename: &str) {
-		let writer = BufWriter::new(File::create(filename).unwrap());
-		serde_json::to_writer_pretty(writer, &self).unwrap();
+		let writer = BufWriter::new(File::create(filename).expect("can't create file"));
+		serde_json::to_writer_pretty(writer, &self).expect("error happened while dumping prm graph to file");
 	}
 }
 
@@ -67,7 +67,7 @@ impl SerializablePRMGraph {
 	}
 
 	pub fn load(filename: &str) -> PRMGraph<2> {
-		let reader = BufReader::new(File::open(filename).unwrap());
+		let reader = BufReader::new(File::open(filename).expect("impossible to open file"));
 		let graph: SerializablePRMGraph = serde_json::from_reader(reader).unwrap();
 
 		PRMGraph {
