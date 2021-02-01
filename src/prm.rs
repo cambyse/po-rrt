@@ -100,9 +100,6 @@ fn test_plan_on_map() {
 	// prm.plan(position, prior);
 	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
 
-	prm_graph::save(&prm.graph, "results/prm.json");
-	prm.graph = prm_graph::load("results/prm.json");
-
 	let world = 1; 
 	let mut full = m.clone();
 	full.set_world(world);
