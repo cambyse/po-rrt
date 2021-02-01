@@ -195,12 +195,18 @@ mod tests {
 
 use super::*;
 
-#[test]
-fn test_graph_serialization() {
+fn create_minimal_graph() -> PRMGraph<2> {
 	let mut graph = PRMGraph{nodes: Vec::new()};
 	graph.add_node([0.0, 0.0], vec![true]);   
 	graph.add_node([1.0, 0.0], vec![true]);   
 	graph.add_edge(0, 1);
+
+	graph
+}
+
+#[test]
+fn test_graph_serialization() {
+	let graph = create_minimal_graph();
 
 	save(&graph, "results/test_graph_serialization.json");
 	let _ = load("results/test_graph_serialization.json");
@@ -208,10 +214,7 @@ fn test_graph_serialization() {
 
 #[test]
 fn test_dijkstra() {
-	let mut graph = PRMGraph{nodes: Vec::new()};
-	graph.add_node([0.0, 0.0], vec![true]);   
-	graph.add_node([1.0, 0.0], vec![true]);   
-	graph.add_edge(0, 1);
+	let graph = create_minimal_graph();
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
