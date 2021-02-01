@@ -204,6 +204,73 @@ fn create_minimal_graph() -> PRMGraph<2> {
 	graph
 }
 
+fn create_grid_graph() -> PRMGraph<2> {
+	/*
+    6---7---8
+    |   |   |
+    3---4---5
+    |   |   |
+	0---1---2
+	*/
+	let mut graph = PRMGraph{nodes: Vec::new()};
+	// nodes
+	graph.add_node([0.0, 0.0], vec![true]);   // 0
+	graph.add_node([1.0, 0.0], vec![true]);   // 1
+	graph.add_node([2.0, 0.0], vec![true]);   // 2
+
+	graph.add_node([0.0, 1.0], vec![true]);   // 3
+	graph.add_node([1.0, 1.0], vec![true]);   // 4
+	graph.add_node([2.0, 1.0], vec![true]);   // 5
+	
+	graph.add_node([0.0, 2.0], vec![true]);   // 6
+	graph.add_node([1.0, 2.0], vec![true]);   // 7
+	graph.add_node([2.0, 2.0], vec![true]);   // 8
+ 
+	// edges
+	graph.add_edge(0, 1); 	graph.add_edge(1, 0);
+	graph.add_edge(1, 2);   graph.add_edge(2, 1);
+
+	graph.add_edge(0, 3); 	graph.add_edge(3, 0);
+	graph.add_edge(1, 4); 	graph.add_edge(4, 1);
+	graph.add_edge(2, 5); 	graph.add_edge(5, 2);
+
+	graph.add_edge(3, 4); 	graph.add_edge(4, 3);
+	graph.add_edge(4, 5);   graph.add_edge(5, 4);
+
+	graph.add_edge(3, 6); 	graph.add_edge(6, 3);
+	graph.add_edge(4, 7); 	graph.add_edge(7, 4);
+	graph.add_edge(5, 8); 	graph.add_edge(8, 5);
+
+	graph.add_edge(6, 7); 	graph.add_edge(7, 6);
+	graph.add_edge(7, 8);   graph.add_edge(8, 7);
+
+	graph
+}
+
+fn create_oriented_grid_graph() -> PRMGraph<2> {
+	/*
+    2-<-3
+    ^   ^
+	0->-1
+	*/
+	let mut graph = PRMGraph{nodes: Vec::new()};
+
+	// nodes
+	graph.add_node([0.0, 0.0], vec![true]);   // 0
+	graph.add_node([1.0, 0.0], vec![true]);   // 1
+
+	graph.add_node([0.0, 1.0], vec![true]);   // 2
+	graph.add_node([1.0, 1.0], vec![true]);   // 3
+
+	// edges
+	graph.add_edge(0, 1);
+	graph.add_edge(0, 2);
+	graph.add_edge(1, 3);
+	graph.add_edge(3, 2);
+
+	graph
+}
+
 #[test]
 fn test_graph_serialization() {
 	let graph = create_minimal_graph();
@@ -213,7 +280,7 @@ fn test_graph_serialization() {
 }
 
 #[test]
-fn test_dijkstra() {
+fn test_dijkstra_on_minimal_graph() {
 	let graph = create_minimal_graph();
 
 	struct Funcs {}
@@ -222,4 +289,57 @@ fn test_dijkstra() {
 
 	assert_eq!(dists, vec![1.0, 0.0]);
 }
+
+#[test]
+fn test_dijkstra_on_grid_graph_single_goal() {
+	let graph = create_grid_graph();
+
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+	let dists = dijkstra(&graph, &vec![8], 0, &Funcs{});
+
+	assert_eq!(dists, vec![4.0, 3.0, 2.0, 3.0, 2.0, 1.0, 2.0, 1.0, 0.0]);
+}
+
+#[test]
+fn test_dijkstra_on_grid_graph_two_goals() {
+	let graph = create_grid_graph();
+
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+	let dists = dijkstra(&graph, &vec![7, 5], 0, &Funcs{});
+
+	assert_eq!(dists, vec![3.0, 2.0, 1.0, 2.0, 1.0, 0.0, 1.0, 0.0, 1.0]);
+}
+
+#[test]
+fn test_dijkstra_on_oriented_grid() {
+	let graph = create_oriented_grid_graph();
+
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+	let dists = dijkstra(&graph, &vec![3], 0, &Funcs{});
+
+	assert_eq!(dists, vec![2.0, 1.0, std::f64::INFINITY, 0.0]);
+}
+
+#[test]
+fn test_world_transitions() {
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+
+	let f = Funcs{};
+
+	fn dummy_node(validity : Vec<bool>) -> PRMNode<2>	{
+		PRMNode{state: [0.0, 0.0], validity: validity, parents: Vec::new(), children: Vec::new()}
+	}
+
+	assert_eq!(f.transition_validator(&dummy_node(vec![true]), &dummy_node(vec![true])), true);
+	assert_eq!(f.transition_validator(&dummy_node(vec![true]), &dummy_node(vec![false])), false);
+	assert_eq!(f.transition_validator(&dummy_node(vec![true, false]), &dummy_node(vec![true, false])), true);
+	assert_eq!(f.transition_validator(&dummy_node(vec![true, false]), &dummy_node(vec![false, true])), false);
+	assert_eq!(f.transition_validator(&dummy_node(vec![true, true]), &dummy_node(vec![true, true])), true);
+	assert_eq!(f.transition_validator(&dummy_node(vec![false, false]), &dummy_node(vec![true, true])), false);
+}
+
 }
