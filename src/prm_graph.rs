@@ -14,6 +14,7 @@ extern crate serde;
 use serde::{Serialize, Deserialize};
 
 use priority_queue::PriorityQueue;
+
 /***************************IO*****************************/
 
 #[derive(Serialize, Deserialize)]
@@ -105,11 +106,6 @@ pub struct PRMGraph<const N: usize> {
 }
 
 impl<const N: usize> PRMGraph<N> {
-	fn new(state: [f64; N]) -> Self {
-		let root = PRMNode { state, validity: Vec::new(), parents: Vec::new(), children: Vec::new() };
-		Self { nodes: vec![root] }
-	}
-
 	pub fn add_node(&mut self, state: [f64; N], state_validity: Vec<bool>) -> usize {
 		let id = self.nodes.len();
 		let node = PRMNode { state, validity: state_validity, parents: Vec::new(), children: Vec::new() };
@@ -156,7 +152,6 @@ impl PartialEq for Priority {
 
 impl Eq for Priority {}
 
-
 fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMGraph<N>, final_node_ids: &Vec<usize>, world: usize, m: &F) -> Vec<f64> {
 	let mut dist = vec![std::f64::INFINITY ;graph.nodes.len()];
 	let mut prev = vec![0 ;graph.nodes.len()];
@@ -165,6 +160,10 @@ fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMGraph<N>, final_node_
 	for &id in final_node_ids {
 		dist[id] = 0.0;
 		q.push(id, Priority{prio: 0.0});
+
+		if ! graph.nodes[id].validity[world] {
+			panic!("final nodes must be valid in considered world");
+		}
 	}
 
 	while !q.is_empty() {
@@ -173,12 +172,15 @@ fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMGraph<N>, final_node_
 		
 		for &v_id in &u.parents {
 			let v = &graph.nodes[v_id];
-			let alt = dist[u_id] + m.cost_evaluator(&u.state, &v.state);
 
-			if alt < dist[v_id] {
-				dist[v_id] = alt;
-				prev[v_id] = u_id;
-				q.push(v_id, Priority{prio: alt});
+			if v.validity[world] {
+				let alt = dist[u_id] + m.cost_evaluator(&u.state, &v.state);
+
+				if alt < dist[v_id] {
+					dist[v_id] = alt;
+					prev[v_id] = u_id;
+					q.push(v_id, Priority{prio: alt});
+				}
 			}
 		}
 	}
@@ -195,8 +197,9 @@ use super::*;
 
 #[test]
 fn test_dijkstra() {
-	let mut graph = PRMGraph::new([0.0, 0.0]); // 0
-	graph.add_node([1.0, 0.0], vec![true]);    // 1
+	let mut graph = PRMGraph{nodes: Vec::new()};
+	graph.add_node([0.0, 0.0], vec![true]);   
+	graph.add_node([1.0, 0.0], vec![true]);   
 	graph.add_edge(0, 1);
 
 	struct Funcs {}
