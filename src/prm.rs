@@ -7,15 +7,48 @@ use crate::map_io::*;
 use crate::prm_graph::*;
 use crate::prm_graph;
 
+pub struct Reachability {
+	validity: Vec<Vec<bool>>,
+	reachability: Vec<Vec<bool>>
+}
+
+impl Reachability {
+	pub fn new() -> Self {
+		Self{ validity: Vec::new(), reachability: Vec::new() }
+	}
+
+	pub fn set_root(&mut self, validity: Vec<bool>) {
+		self.validity.push(validity.clone());
+		self.reachability.push(validity);
+	}
+
+	pub fn add_node<'a> (&mut self, validity: Vec<bool>) {
+		self.validity.push(validity.clone());
+		self.reachability.push(vec![false; validity.len()]);
+	}
+
+	pub fn add_edge(&mut self, from: usize, to: usize) {
+		self.reachability[to] = 
+		izip!(self.reachability[from].iter(), self.reachability[to].iter(), self.validity[to].iter())
+		.map(|(&r_from, &r_to, &v_to)| r_to || (r_from && v_to) )
+		.collect();
+	}
+
+	pub fn reachability(&self, id: usize) -> &Vec<bool> {
+		&self.reachability[id]
+	}
+}
+
 pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	sample_space: SampleSpace<N>,
 	fns: &'a F,
-	graph: PRMGraph<N>
+	graph: PRMGraph<N>,
+	conservative_reachability: Reachability
 }
 
 impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn new(sample_space: SampleSpace<N>, fns: &'a F) -> Self {
-		Self { sample_space, fns, graph: PRMGraph{nodes: vec![]} }
+		Self { sample_space, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new() }
 	}
 
 	pub fn grow_graph(&mut self, start: &[f64; N],
@@ -81,6 +114,32 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 mod tests {
 
 use super::*;
+
+#[test]
+fn test_reachability() {
+	/*
+		0
+		|
+		1
+	   / \
+	  2   3
+	*/
+	let mut reachability = Reachability::new();
+
+	reachability.set_root(vec![true, true]); // 0
+	reachability.add_node(vec![true, false]); // 1
+	reachability.add_node(vec![true, false]); // 2
+	reachability.add_node(vec![false, true]); // 3
+
+	reachability.add_edge(0, 1);
+	reachability.add_edge(1, 2);
+	reachability.add_edge(1, 3);
+
+	assert_eq!(reachability.reachability(0), &vec![true, true]);
+	assert_eq!(reachability.reachability(1), &vec![true, false]);
+	assert_eq!(reachability.reachability(2), &vec![true, false]);
+	assert_eq!(reachability.reachability(3), &vec![false, false]);
+}
 
 #[test]
 fn test_plan_on_map() {
