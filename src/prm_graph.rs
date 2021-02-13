@@ -196,6 +196,9 @@ mod tests {
 use super::*;
 
 fn create_minimal_graph() -> PRMGraph<2> {
+	/*
+	0->-1
+	*/
 	let mut graph = PRMGraph{nodes: Vec::new()};
 	graph.add_node([0.0, 0.0], vec![true]);   
 	graph.add_node([1.0, 0.0], vec![true]);   

@@ -106,7 +106,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
 	}
 
-	fn grow_tree(&self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
+	fn grow_tree(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
 				max_step: f64, search_radius: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<usize>) {
 		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new(start);
@@ -204,7 +204,7 @@ fn test_plan_empty_space() {
 		(state[0] - 0.9).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &Funcs{});
+	let mut rrt = RRT::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]), &Funcs{});
 
 	let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 1.0, 1000);
 	assert!(path_result.as_ref().expect("No path found!").len() > 2);
@@ -218,12 +218,13 @@ fn test_plan_on_map() {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &m);
-	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 5000);
+	let mut rrt = RRT::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]), &m);
+	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.05, 5.0, 5000);
 
 	assert!(path_result.as_ref().expect("No path found!").len() > 2);
+
 	m.draw_tree(&rrttree);
 	m.draw_path(path_result.unwrap());
-	m.save("results/test_plan_on_map.pgm")
+	m.save("results/test_rrt_on_map.pgm")
 }
 }

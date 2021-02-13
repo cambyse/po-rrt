@@ -92,7 +92,7 @@ impl Map {
 		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new()}
 	}
 
-	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], _: u8) {
+	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: u8) {
 		let a_ij = self.to_pixel_coordinates(&a);
 		let b_ij = self.to_pixel_coordinates(&b);
 
@@ -107,7 +107,7 @@ impl Map {
 			let i = (a_ij[0] as i32 + (lambda * ((b_ij[0] as f64) - (a_ij[0] as f64))) as i32) as u32;
 			let j = (a_ij[1] as i32+ (lambda * ((b_ij[1] as f64) - (a_ij[1] as f64))) as i32) as u32;
 			
-			let c = if s < n/2 { 50 } else { 200 };
+			let c = if s < n/2 { color/2 } else { color };
 			self.img.put_pixel(j, i, Luma([c]));
 		}
 	}
@@ -178,13 +178,13 @@ impl Map {
 		}
 	}
 
-	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>, world:usize) {
+	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>, _:usize) {
 		for from in &graph.nodes {
 			for to_id in from.children.clone() {
 				let to  = &graph.nodes[to_id];
-				if to.validity[world] && from.validity[world] {
+				//if to.validity[world] && from.validity[world] {
 					self.draw_line(from.state, to.state, 100);
-				}
+				//}
 			}
 		}
 	}

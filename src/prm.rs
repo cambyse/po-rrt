@@ -9,12 +9,13 @@ use crate::prm_graph;
 
 pub struct Reachability {
 	validity: Vec<Vec<bool>>,
-	reachability: Vec<Vec<bool>>
+	reachability: Vec<Vec<bool>>,
+	final_node_ids: Vec<usize>
 }
 
 impl Reachability {
 	pub fn new() -> Self {
-		Self{ validity: Vec::new(), reachability: Vec::new() }
+		Self{ validity: Vec::new(), reachability: Vec::new(), final_node_ids: Vec::new() }
 	}
 
 	pub fn set_root(&mut self, validity: Vec<bool>) {
@@ -27,6 +28,10 @@ impl Reachability {
 		self.reachability.push(vec![false; validity.len()]);
 	}
 
+	pub fn add_final_node(&mut self, id: usize) {
+		self.final_node_ids.push(id);
+	}
+
 	pub fn add_edge(&mut self, from: usize, to: usize) {
 		self.reachability[to] = 
 		izip!(self.reachability[from].iter(), self.reachability[to].iter(), self.validity[to].iter())
@@ -36,6 +41,20 @@ impl Reachability {
 
 	pub fn reachability(&self, id: usize) -> &Vec<bool> {
 		&self.reachability[id]
+	}
+
+	pub fn is_final_set_complete(&self) -> bool {
+		if self.final_node_ids.is_empty() { return false; }
+
+		let &first_final_id = self.final_node_ids.first().unwrap();
+		let mut completeness = self.reachability[first_final_id].clone();
+
+		for &id in self.final_node_ids.iter().skip(0) {
+			completeness = completeness.iter().zip(self.reachability(id))
+			.map(|(&a, &b)| a || b).collect();
+		}
+
+		completeness.iter().all(|&reachable| reachable)
 	}
 }
 
@@ -51,13 +70,17 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		Self { sample_space, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new() }
 	}
 
-	pub fn grow_graph(&mut self, start: &[f64; N],
+	pub fn grow_graph(&mut self, start: &[f64; N], goal: fn(&[f64; N]) -> bool,
 				max_step: f64, search_radius: f64, n_iter_max: u32) {
 		let mut kdtree = KdTree::new(*start);
-		self.graph.add_node(*start, self.fns.state_validity(&start).expect("Start from a valid state!"));
+		let root_validity = self.fns.state_validity(&start).expect("Start from a valid state!");
+		self.graph.add_node(*start, root_validity.clone());
+		self.conservative_reachability.set_root(root_validity);
 
-		for i in 0..n_iter_max {
-			if i % 100 == 0 {
+		let mut i = 0;
+		while !self.conservative_reachability.is_final_set_complete() && i < n_iter_max {
+			i+=1;
+			if i % 1000 == 0 {
 				println!("number of iterations:{}", i);
 			}
 
@@ -69,8 +92,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let state_validity = self.fns.state_validity(&new_state);
 			if state_validity.is_some() {
 				// First, add node
-				let new_node_id = self.graph.add_node(new_state, state_validity.unwrap());
+				let new_node_id = self.graph.add_node(new_state, state_validity.clone().unwrap());
 				let new_node = &self.graph.nodes[new_node_id];
+				self.conservative_reachability.add_node(state_validity.unwrap());
 
 				// Second, we find the neighbors in a specific radius of new_state.
 				let radius = {
@@ -79,22 +103,42 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					if s < max_step { s } else { max_step }
 				};
 
+				kdtree.add(new_state, new_node_id);
+
+				// Third we connect to neighbors 
 				let neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
-					.map(|kd_node| (kd_node.id, &self.graph.nodes[kd_node.id]))	
+				.map(|&kd_node| kd_node.id)
+				.collect();
+
+				let fwd_ids: Vec<usize> = neighbour_ids.iter()
+					.map(|&id| (id, &self.graph.nodes[id]))
 					.filter(|(_, node)| self.fns.transition_validator(node, new_node))
 					.map(|(id, _)| id)
 					.collect();
 
-				// Third, connect to neighbors if transition possible
-				for neighbor_id in neighbour_ids {
-					self.graph.add_edge(neighbor_id, new_node_id);
-					/*let neighbor_state = &self.graph.nodes[neighbor_id].state;
-					if self.fns.transition_validator(&new_state, &neighbor_state) {
-						self.graph.add_edge(new_node_id, neighbor_id);
-					}*/
+				/*let bwd_ids: Vec<usize> = neighbour_ids.iter()
+				.map(|&id| (id, &self.graph.nodes[id]))
+				.filter(|(_, node)| self.fns.transition_validator(new_node, node))
+				.map(|(id, _)| id.clone())
+				.collect();*/
+							
+				for &id in &fwd_ids {
+					self.graph.add_edge(id, new_node_id);
+					self.conservative_reachability.add_edge(id, new_node_id);
+				}
+				
+				/*for &id in &bwd_ids {
+					self.graph.add_edge(new_node_id, id);
+					self.conservative_reachability.add_edge(new_node_id, id);
+				}*/
+
+				if goal(&new_state) {
+					self.conservative_reachability.add_final_node(new_node_id);
 				}
 
-				kdtree.add(new_state, new_node_id);
+				if self.conservative_reachability.is_final_set_complete() {
+					self.conservative_reachability.is_final_set_complete();
+				}
 			}
 		}
 	}
@@ -102,18 +146,38 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn plan(&mut self, _: &[f64; N], _: &Vec<f64>) -> Result<Vec<[f64; N]>, &'static str> {
 		Err("")
 	}
-
-	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
-		pairwise_iter(path)
-			.map(|(a,b)| self.fns.cost_evaluator(a,b))
-			.sum()
-	}
 }
 
 #[cfg(test)]
 mod tests {
 
 use super::*;
+
+#[test]
+fn test_plan_on_map() {
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm");
+
+	fn goal(state: &[f64; 2]) -> bool {
+		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+	}
+
+	let mut prm = PRM::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]), &m);
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000);
+	
+	let _ = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
+
+	// loop:
+	// prm.plan(position, prior);
+	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
+
+	let world = 0; 
+	let mut full = m.clone();
+	full.set_world(world);
+	full.draw_full_graph(&prm.graph, world);
+	//full.draw_graph_for_world(&prm.graph, world);
+	full.save("results/test_prm_graph.pgm");
+}
 
 #[test]
 fn test_reachability() {
@@ -142,37 +206,61 @@ fn test_reachability() {
 }
 
 #[test]
-fn test_plan_on_map() {
-	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm");
+fn test_reachability_diamond_shape() {
+	/*
+		0
+	   / \
+	  1   2
+	   \ /
+	    3
+	*/
+	let mut reachability = Reachability::new();
 
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
-	}
+	reachability.set_root(vec![true, true]); // 0
+	reachability.add_node(vec![true, false]); // 1
+	reachability.add_node(vec![false, true]); // 2
+	reachability.add_node(vec![true, true]); // 3
 
-	let mut prm = PRM::new(SampleSpace{low: [-1.0, -1.0], up: [1.0, 1.0]}, &m);
-	prm.grow_graph(&[0.55, -0.8], 0.05, 5.0, 2500);
-	
-	let _ = prm.plan(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
+	reachability.add_edge(0, 1);
+	reachability.add_edge(0, 2);
+	reachability.add_edge(1, 3);
+	reachability.add_edge(2, 3);
 
-	// loop:
-	// prm.plan(position, prior);
-	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
-
-	let world = 1; 
-	let mut full = m.clone();
-	full.set_world(world);
-	full.draw_full_graph(&prm.graph, world);
-	//full.draw_graph_for_world(&prm.graph, world);
-	full.save("results/test_prm_graph_from.pgm");
-
-
-	/*let world = 0; 
-	let mut from = m.clone();
-	from.set_world(world);
-	from.draw_graph_for_world(&prm.graph, world);
-	from.save("results/test_prm_graph_from.pgm");*/
+	assert_eq!(reachability.reachability(0), &vec![true, true]);
+	assert_eq!(reachability.reachability(1), &vec![true, false]);
+	assert_eq!(reachability.reachability(2), &vec![false, true]);
+	assert_eq!(reachability.reachability(3), &vec![true, true]);
 }
+
+#[test]
+fn test_final_nodes_completness() {
+	/*
+		0
+		|
+		1
+	   / \
+	  2   3
+	*/
+	let mut reachability = Reachability::new();
+
+	reachability.set_root(vec![true, true]); // 0
+	reachability.add_node(vec![true, true]); // 1
+	reachability.add_node(vec![true, false]); // 2
+	reachability.add_node(vec![false, true]); // 3
+
+	reachability.add_edge(0, 1);
+	reachability.add_edge(1, 2);
+	reachability.add_edge(1, 3);
+
+	assert_eq!(reachability.is_final_set_complete(), false);
+
+	reachability.add_final_node(2);
+	assert_eq!(reachability.is_final_set_complete(), false);
+
+	reachability.add_final_node(3);
+	assert_eq!(reachability.is_final_set_complete(), true);
+}
+
 }
 
 /* N = nombre de mondes
@@ -200,7 +288,6 @@ fn test_plan_on_map() {
 *
 * QUESTIONS:
 * - Quand arreter de faire croitre le graph et quand même avoir une solution our chaque monde??
-* - Biais pour sampling basé sur heristique
 */
 
-// Compresser pour avoir N mondes même dan domaines ou le nombre de mondes explosent
+// Compresser pour avoir N mondes même pour des domaines où le nombre de mondes explose
