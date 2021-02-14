@@ -13,7 +13,7 @@ impl<const N: usize> ContinuousSampler<N> {
 		Self {
 			low,
 			up,
-			rng: Pcg64::seed_from_u64(0)
+			rng: Pcg64::seed_from_u64(2)
 		}
 	}
 

@@ -43,6 +43,13 @@ impl Reachability {
 		&self.reachability[id]
 	}
 
+	pub fn final_nodes_for_world(&self, world: usize) -> Vec<usize> {
+		self.final_node_ids.iter()
+			.filter(|&id| self.reachability[*id][world])
+			.map(|&id| id)
+			.collect()
+	}
+
 	pub fn is_final_set_complete(&self) -> bool {
 		if self.final_node_ids.is_empty() { return false; }
 
@@ -95,6 +102,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let world = self.discrete_sampler.sample(n_worlds);
 
 			// Second, retrieve closest node for sampled world and steer from there
+			//let kd_from = kdtree.nearest_neighbor(new_state); // n log n
 			let kd_from = kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // n log n
 			steer(&kd_from.state, &mut new_state, max_step); 
 
@@ -153,6 +161,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	pub fn plan(&mut self, _: &[f64; N], _: &Vec<f64>) -> Result<Vec<[f64; N]>, &'static str> {
+		let final_nodes_in_0 = self.conservative_reachability.final_nodes_for_world(0);
+		let _dist_to_final = dijkstra(&self.graph, &final_nodes_in_0, 0, self.fns);
+
 		Err("")
 	}
 
@@ -180,7 +191,7 @@ fn test_plan_on_map() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 10000);
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000, 10000);
 
 	prm.print_summary();
 	
@@ -189,11 +200,11 @@ fn test_plan_on_map() {
 	// loop:
 	// prm.plan(position, prior); 	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
 
-	let world = 2; 
+	let world = 0; 
 	let mut full = m.clone();
 	full.set_world(world);
-	//full.draw_full_graph(&prm.graph, world);
-	full.draw_graph_for_world(&prm.graph, world);
+	full.draw_full_graph(&prm.graph);
+	//full.draw_graph_for_world(&prm.graph, world);
 	full.save("results/test_prm_graph.pgm");
 }
 
@@ -277,6 +288,9 @@ fn test_final_nodes_completness() {
 
 	reachability.add_final_node(3);
 	assert_eq!(reachability.is_final_set_complete(), true);
+
+	assert_eq!(reachability.final_nodes_for_world(0), vec![2]);
+	assert_eq!(reachability.final_nodes_for_world(1), vec![3]);
 }
 
 }
