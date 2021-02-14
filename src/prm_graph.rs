@@ -123,6 +123,16 @@ impl<const N: usize> PRMGraph<N> {
 
 		path
 	}
+
+	pub fn print_summary(&self) {
+		let (sum, max) = self.nodes.iter()
+			.map(|node| node.children.len())
+			.fold((0, 0), |(sum, max), n_children| (sum + n_children, if n_children > max { n_children } else { max }));
+
+		println!("number of nodes:{}", self.nodes.len());
+		println!("average number of children:{}", sum / self.nodes.len());
+		println!("max number of children:{}", max)
+	}
 }
 
 /****************************Dijkstra******************************/

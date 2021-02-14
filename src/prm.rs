@@ -46,13 +46,18 @@ impl Reachability {
 	pub fn is_final_set_complete(&self) -> bool {
 		if self.final_node_ids.is_empty() { return false; }
 
-		let &first_final_id = self.final_node_ids.first().unwrap();
-		let mut completeness = self.reachability[first_final_id].clone();
-
-		for &id in self.final_node_ids.iter().skip(0) {
-			completeness = completeness.iter().zip(self.reachability(id))
-			.map(|(&a, &b)| a || b).collect();
+		// some function used later
+		fn or(reachability_a: &Vec<bool>, reachability_b: &Vec<bool>) -> Vec<bool> {
+			reachability_a.iter().zip(reachability_b)
+			.map(|(&a, &b)| a || b).collect()
 		}
+
+		// get first elements as starting point..
+		let &first_final_id = self.final_node_ids.first().unwrap();
+		let first_reachability = self.reachability[first_final_id].clone();
+
+		let completeness = self.final_node_ids.iter().skip(0)
+			.fold(first_reachability, |reachability, &id| or(&reachability, &self.reachability(id)) );
 
 		completeness.iter().all(|&reachable| reachable)
 	}
@@ -73,6 +78,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 	pub fn grow_graph(&mut self, &start: &[f64; N], goal: fn(&[f64; N]) -> bool,
 				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) {
+
 		let root_validity = self.fns.state_validity(&start).expect("Start from a valid state!");
 		let n_worlds = root_validity.len();
 		self.graph.add_node(start, root_validity.clone());
@@ -140,12 +146,10 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				if goal(&new_state) {
 					self.conservative_reachability.add_final_node(new_node_id);
 				}
-
-				if self.conservative_reachability.is_final_set_complete() {
-					self.conservative_reachability.is_final_set_complete();
-				}
 			}
 		}
+
+		self.graph.print_summary();
 	}
 
 	pub fn plan(&mut self, _: &[f64; N], _: &Vec<f64>) -> Result<Vec<[f64; N]>, &'static str> {
@@ -176,10 +180,9 @@ fn test_plan_on_map() {
 	let _ = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
 
 	// loop:
-	// prm.plan(position, prior);
-	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
+	// prm.plan(position, prior); 	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
 
-	let world = 3; 
+	let world = 2; 
 	let mut full = m.clone();
 	full.set_world(world);
 	//full.draw_full_graph(&prm.graph, world);

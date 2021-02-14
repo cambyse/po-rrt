@@ -178,13 +178,11 @@ impl Map {
 		}
 	}
 
-	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>, _:usize) {
+	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>) {
 		for from in &graph.nodes {
 			for to_id in from.children.clone() {
 				let to  = &graph.nodes[to_id];
-				//if to.validity[world] && from.validity[world] {
-					self.draw_line(from.state, to.state, 100);
-				//}
+				self.draw_line(from.state, to.state, 200);
 			}
 		}
 	}
