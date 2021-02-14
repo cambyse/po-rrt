@@ -60,43 +60,48 @@ impl Reachability {
 
 pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	sample_space: SampleSpace<N>,
+	discrete_sample: DiscreteSample,
 	fns: &'a F,
 	graph: PRMGraph<N>,
 	conservative_reachability: Reachability
 }
 
 impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
-	pub fn new(sample_space: SampleSpace<N>, fns: &'a F) -> Self {
-		Self { sample_space, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new() }
+	pub fn new(sample_space: SampleSpace<N>, discrete_sample: DiscreteSample, fns: &'a F) -> Self {
+		Self { sample_space, discrete_sample, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new() }
 	}
 
-	pub fn grow_graph(&mut self, start: &[f64; N], goal: fn(&[f64; N]) -> bool,
-				max_step: f64, search_radius: f64, n_iter_max: u32) {
-		let mut kdtree = KdTree::new(*start);
+	pub fn grow_graph(&mut self, &start: &[f64; N], goal: fn(&[f64; N]) -> bool,
+				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) {
 		let root_validity = self.fns.state_validity(&start).expect("Start from a valid state!");
-		self.graph.add_node(*start, root_validity.clone());
+		let n_worlds = root_validity.len();
+		self.graph.add_node(start, root_validity.clone());
 		self.conservative_reachability.set_root(root_validity);
+		let mut kdtree = KdTree::new(start);
 
 		let mut i = 0;
-		while !self.conservative_reachability.is_final_set_complete() && i < n_iter_max {
+		while i < n_iter_min || !self.conservative_reachability.is_final_set_complete() && i < n_iter_max {
 			i+=1;
 			if i % 1000 == 0 {
 				println!("number of iterations:{}", i);
 			}
 
+			// First sample state and world
 			let mut new_state = self.sample_space.sample();
-			let kd_from = kdtree.nearest_neighbor(new_state); // n log n
+			let world = self.discrete_sample.sample(n_worlds);
 
+			// Second, retrieve closest node for sampled world and steer from there
+			let kd_from = kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // n log n
 			steer(&kd_from.state, &mut new_state, max_step); 
 
 			let state_validity = self.fns.state_validity(&new_state);
 			if state_validity.is_some() {
-				// First, add node
+				// Third, add node
 				let new_node_id = self.graph.add_node(new_state, state_validity.clone().unwrap());
 				let new_node = &self.graph.nodes[new_node_id];
 				self.conservative_reachability.add_node(state_validity.unwrap());
 
-				// Second, we find the neighbors in a specific radius of new_state.
+				// Fourth, we find the neighbors in a specific radius of new_state.
 				let radius = {
 					let n = self.graph.nodes.len() as f64;
 					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
@@ -105,7 +110,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 				kdtree.add(new_state, new_node_id);
 
-				// Third we connect to neighbors 
+				// Fifth we connect to neighbors 
 				let neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
 				.map(|&kd_node| kd_node.id)
 				.collect();
@@ -162,8 +167,11 @@ fn test_plan_on_map() {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}
 
-	let mut prm = PRM::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]), &m);
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000);
+	let mut prm = PRM::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSample::new(),
+						   &m);
+
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 10000);
 	
 	let _ = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
 
@@ -171,11 +179,11 @@ fn test_plan_on_map() {
 	// prm.plan(position, prior);
 	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
 
-	let world = 0; 
+	let world = 3; 
 	let mut full = m.clone();
 	full.set_world(world);
-	full.draw_full_graph(&prm.graph, world);
-	//full.draw_graph_for_world(&prm.graph, world);
+	//full.draw_full_graph(&prm.graph, world);
+	full.draw_graph_for_world(&prm.graph, world);
 	full.save("results/test_prm_graph.pgm");
 }
 
@@ -291,3 +299,10 @@ fn test_final_nodes_completness() {
 */
 
 // Compresser pour avoir N mondes même pour des domaines où le nombre de mondes explose
+
+// Done:
+// - random seed + time saving
+// - dijkstra
+// - more efficient tree growing
+// - reachability
+// - serializaion
