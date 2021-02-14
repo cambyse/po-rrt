@@ -90,13 +90,13 @@ pub trait RRTFuncs<const N: usize> {
 }
 
 pub struct RRT<'a, F: RRTFuncs<N>, const N: usize> {
-	sample_space: SampleSpace<N>,
+	sampler: ContinuousSampler<N>,
 	fns: &'a F,
 }
 
 impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
-	pub fn new(sample_space: SampleSpace<N>, fns: &'a F) -> Self {
-		Self { sample_space, fns }
+	pub fn new(sampler: ContinuousSampler<N>, fns: &'a F) -> Self {
+		Self { sampler, fns }
 	}
 
 	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
@@ -113,7 +113,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 		let mut kdtree = KdTree::new(start);
 
 		for _ in 0..n_iter_max {
-			let mut new_state = self.sample_space.sample();
+			let mut new_state = self.sampler.sample();
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
 			steer(&kd_from.state, &mut new_state, max_step);
@@ -204,7 +204,7 @@ fn test_plan_empty_space() {
 		(state[0] - 0.9).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]), &Funcs{});
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &Funcs{});
 
 	let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 1.0, 1000);
 	assert!(path_result.as_ref().expect("No path found!").len() > 2);
@@ -218,7 +218,7 @@ fn test_plan_on_map() {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]), &m);
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);
 	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.05, 5.0, 5000);
 
 	assert!(path_result.as_ref().expect("No path found!").len() > 2);

@@ -59,16 +59,16 @@ impl Reachability {
 }
 
 pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
-	sample_space: SampleSpace<N>,
-	discrete_sample: DiscreteSample,
+	continuous_sampler: ContinuousSampler<N>,
+	discrete_sampler: DiscreteSampler,
 	fns: &'a F,
 	graph: PRMGraph<N>,
 	conservative_reachability: Reachability
 }
 
 impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
-	pub fn new(sample_space: SampleSpace<N>, discrete_sample: DiscreteSample, fns: &'a F) -> Self {
-		Self { sample_space, discrete_sample, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new() }
+	pub fn new(continuous_sampler: ContinuousSampler<N>, discrete_sampler: DiscreteSampler, fns: &'a F) -> Self {
+		Self { continuous_sampler, discrete_sampler, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new() }
 	}
 
 	pub fn grow_graph(&mut self, &start: &[f64; N], goal: fn(&[f64; N]) -> bool,
@@ -87,8 +87,8 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			}
 
 			// First sample state and world
-			let mut new_state = self.sample_space.sample();
-			let world = self.discrete_sample.sample(n_worlds);
+			let mut new_state = self.continuous_sampler.sample();
+			let world = self.discrete_sampler.sample(n_worlds);
 
 			// Second, retrieve closest node for sampled world and steer from there
 			let kd_from = kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // n log n
@@ -167,8 +167,8 @@ fn test_plan_on_map() {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}
 
-	let mut prm = PRM::new(SampleSpace::new([-1.0, -1.0], [1.0, 1.0]),
-						   DiscreteSample::new(),
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSampler::new(),
 						   &m);
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 10000);
