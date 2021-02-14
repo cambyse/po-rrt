@@ -68,16 +68,17 @@ pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	discrete_sampler: DiscreteSampler,
 	fns: &'a F,
 	graph: PRMGraph<N>,
-	conservative_reachability: Reachability
+	conservative_reachability: Reachability,
+	n_it: usize
 }
 
 impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn new(continuous_sampler: ContinuousSampler<N>, discrete_sampler: DiscreteSampler, fns: &'a F) -> Self {
-		Self { continuous_sampler, discrete_sampler, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new() }
+		Self { continuous_sampler, discrete_sampler, fns, graph: PRMGraph{nodes: vec![]}, conservative_reachability: Reachability::new(), n_it: 0 }
 	}
 
 	pub fn grow_graph(&mut self, &start: &[f64; N], goal: fn(&[f64; N]) -> bool,
-				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) {
+				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> bool {
 
 		let root_validity = self.fns.state_validity(&start).expect("Start from a valid state!");
 		let n_worlds = root_validity.len();
@@ -88,10 +89,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		let mut i = 0;
 		while i < n_iter_min || !self.conservative_reachability.is_final_set_complete() && i < n_iter_max {
 			i+=1;
-			if i % 1000 == 0 {
-				println!("number of iterations:{}", i);
-			}
-
+	
 			// First sample state and world
 			let mut new_state = self.continuous_sampler.sample();
 			let world = self.discrete_sampler.sample(n_worlds);
@@ -149,11 +147,18 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			}
 		}
 
-		self.graph.print_summary();
+		self.n_it += i;
+
+		self.conservative_reachability.is_final_set_complete()
 	}
 
 	pub fn plan(&mut self, _: &[f64; N], _: &Vec<f64>) -> Result<Vec<[f64; N]>, &'static str> {
 		Err("")
+	}
+
+	pub fn print_summary(&self) {
+		println!("number of iterations:{}", self.n_it);
+		self.graph.print_summary();
 	}
 }
 
@@ -176,6 +181,8 @@ fn test_plan_on_map() {
 						   &m);
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 10000);
+
+	prm.print_summary();
 	
 	let _ = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]);
 
