@@ -13,7 +13,7 @@ impl<const N: usize> SampleSpace<N> {
 		Self {
 			low,
 			up,
-			rng: Pcg64::seed_from_u64(2)
+			rng: Pcg64::seed_from_u64(0)
 		}
 	}
 
@@ -32,6 +32,28 @@ impl<const N: usize> SampleSpace<N> {
 		}
 
 		return s;	
+	}
+}
+
+pub struct DiscreteSample{
+	rng: Pcg64
+}
+
+impl DiscreteSample {
+	pub fn new() -> Self {
+		Self {
+			rng: Pcg64::seed_from_u64(0)
+		}
+	}
+
+	pub fn new_true_random() -> Self {
+		Self {
+			rng: Pcg64::from_rng(rand::thread_rng()).unwrap()
+		}
+	}
+
+	pub fn sample(&mut self, n_worlds: usize) -> usize {
+		self.rng.gen_range(0..n_worlds)
 	}
 }
 
@@ -62,4 +84,15 @@ fn draw_sample() {
 			}
 		}
 	}
+
+#[test]
+fn draw_discrete_sample() {
+	let mut space = DiscreteSample::new();
+	
+	for _ in 0..100 {
+			let s = space.sample(10);
+		
+			assert!(s < 10);
+	}
+}
 }
