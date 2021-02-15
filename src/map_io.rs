@@ -1,4 +1,4 @@
-use crate::{rrt::{Accessibility, RRTFuncs, RRTTree, WorldMask}};
+use crate::{rrt::{Reachable, RRTFuncs, RRTTree, WorldMask}};
 use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use image::Luma;
 use image::DynamicImage::ImageLuma8;
@@ -64,8 +64,8 @@ impl Map {
 
 	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
 		for c in &rrttree.nodes {
-			if let Some(parent_id) = c.parent_id {
-				let parent = &rrttree.nodes[parent_id];
+			for parent in &c.parents {
+				let parent = &rrttree.nodes[parent.id];
 				self.draw_line(parent.state, c.state, 180);
 			}
 		}
@@ -230,7 +230,7 @@ impl RRTFuncs<2> for Map {
 		self.is_state_valid(state)
 	}
 
-	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Accessibility {
+	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Reachable {
 		let a_ij = self.to_pixel_coordinates(&a);
 		let b_ij = self.to_pixel_coordinates(&b);
 
@@ -256,7 +256,7 @@ impl RRTFuncs<2> for Map {
 			};
 
 			match (pixel_belief, restricted_zone) {
-			    (Belief::Always(false), _) => { return Accessibility::Never; }
+			    (Belief::Always(false), _) => { return Reachable::Never; }
 			    (Belief::Choice(zone, _), None) => { restricted_zone = Some(zone); }
 			    (Belief::Choice(zone, _), Some(zone_seen)) if zone != zone_seen => {
 					panic!("Multiple zones traversal not supported")
@@ -266,9 +266,9 @@ impl RRTFuncs<2> for Map {
 		}
 
 		if let Some(zone) = restricted_zone {
-			Accessibility::Restricted(&self.zones_to_worlds[zone])
+			Reachable::Restricted(&self.zones_to_worlds[zone])
 		} else {
-			Accessibility::Always
+			Reachable::Always
 		}
 	}
 }
