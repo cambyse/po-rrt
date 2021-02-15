@@ -10,6 +10,7 @@ pub struct ContinuousSampler<const N: usize> {
 
 impl<const N: usize> ContinuousSampler<N> {
 	pub fn new(low: [f64; N], up: [f64; N]) -> Self {
+		// TODO use environment variable to seed the rng
 		Self {
 			low,
 			up,

@@ -1,15 +1,16 @@
 use itertools::{all, enumerate, izip, merge, zip};
 
-use crate::common::*;
+use crate::{common::*, rrt::WorldMask};
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
 use crate::prm_graph::*;
 use crate::prm_graph;
+use bitvec::prelude::*;
 
 pub struct Reachability {
-	validity: Vec<Vec<bool>>,
-	reachability: Vec<Vec<bool>>,
+	validity: Vec<WorldMask>,
+	reachability: Vec<WorldMask>,
 	final_node_ids: Vec<usize>
 }
 
@@ -18,14 +19,14 @@ impl Reachability {
 		Self{ validity: Vec::new(), reachability: Vec::new(), final_node_ids: Vec::new() }
 	}
 
-	pub fn set_root(&mut self, validity: Vec<bool>) {
+	pub fn set_root(&mut self, validity: WorldMask) {
 		self.validity.push(validity.clone());
 		self.reachability.push(validity);
 	}
 
-	pub fn add_node<'a> (&mut self, validity: Vec<bool>) {
+	pub fn add_node<'a> (&mut self, validity: WorldMask) {
 		self.validity.push(validity.clone());
-		self.reachability.push(vec![false; validity.len()]);
+		self.reachability.push(bitvec![0; validity.len()]);
 	}
 
 	pub fn add_final_node(&mut self, id: usize) {
@@ -33,13 +34,12 @@ impl Reachability {
 	}
 
 	pub fn add_edge(&mut self, from: usize, to: usize) {
-		self.reachability[to] = 
-		izip!(self.reachability[from].iter(), self.reachability[to].iter(), self.validity[to].iter())
-		.map(|(&r_from, &r_to, &v_to)| r_to || (r_from && v_to) )
-		.collect();
+		let mut tmp = self.reachability[from].clone();
+		tmp &= self.validity[to].clone();
+		self.reachability[to] |= tmp;
 	}
 
-	pub fn reachability(&self, id: usize) -> &Vec<bool> {
+	pub fn reachability(&self, id: usize) -> &WorldMask {
 		&self.reachability[id]
 	}
 
@@ -53,20 +53,13 @@ impl Reachability {
 	pub fn is_final_set_complete(&self) -> bool {
 		if self.final_node_ids.is_empty() { return false; }
 
-		// some function used later
-		fn or(reachability_a: &Vec<bool>, reachability_b: &Vec<bool>) -> Vec<bool> {
-			reachability_a.iter().zip(reachability_b)
-			.map(|(&a, &b)| a || b).collect()
-		}
-
 		// get first elements as starting point..
 		let &first_final_id = self.final_node_ids.first().unwrap();
 		let first_reachability = self.reachability[first_final_id].clone();
 
-		let completeness = self.final_node_ids.iter().skip(0)
-			.fold(first_reachability, |reachability, &id| or(&reachability, &self.reachability(id)) );
-
-		completeness.iter().all(|&reachable| reachable)
+		self.final_node_ids.iter().skip(0)
+			.fold(first_reachability, |reachability, &id| reachability | self.reachability[id].clone())
+			.all()
 	}
 }
 
@@ -265,19 +258,19 @@ fn test_reachability() {
 	*/
 	let mut reachability = Reachability::new();
 
-	reachability.set_root(vec![true, true]); // 0
-	reachability.add_node(vec![true, false]); // 1
-	reachability.add_node(vec![true, false]); // 2
-	reachability.add_node(vec![false, true]); // 3
+	reachability.set_root(bitvec![1,1]); // 0
+	reachability.add_node(bitvec![1,0]); // 1
+	reachability.add_node(bitvec![1,0]); // 2
+	reachability.add_node(bitvec![0,1]); // 3
 
 	reachability.add_edge(0, 1);
 	reachability.add_edge(1, 2);
 	reachability.add_edge(1, 3);
 
-	assert_eq!(reachability.reachability(0), &vec![true, true]);
-	assert_eq!(reachability.reachability(1), &vec![true, false]);
-	assert_eq!(reachability.reachability(2), &vec![true, false]);
-	assert_eq!(reachability.reachability(3), &vec![false, false]);
+	assert_eq!(reachability.reachability(0), &bitvec![1,1]);
+	assert_eq!(reachability.reachability(1), &bitvec![1,0]);
+	assert_eq!(reachability.reachability(2), &bitvec![1,0]);
+	assert_eq!(reachability.reachability(3), &bitvec![0,0]);
 }
 
 #[test]
@@ -291,20 +284,20 @@ fn test_reachability_diamond_shape() {
 	*/
 	let mut reachability = Reachability::new();
 
-	reachability.set_root(vec![true, true]); // 0
-	reachability.add_node(vec![true, false]); // 1
-	reachability.add_node(vec![false, true]); // 2
-	reachability.add_node(vec![true, true]); // 3
+	reachability.set_root(bitvec![1,1]); // 0
+	reachability.add_node(bitvec![1,0]); // 1
+	reachability.add_node(bitvec![0,1]); // 2
+	reachability.add_node(bitvec![1,1]); // 3
 
 	reachability.add_edge(0, 1);
 	reachability.add_edge(0, 2);
 	reachability.add_edge(1, 3);
 	reachability.add_edge(2, 3);
 
-	assert_eq!(reachability.reachability(0), &vec![true, true]);
-	assert_eq!(reachability.reachability(1), &vec![true, false]);
-	assert_eq!(reachability.reachability(2), &vec![false, true]);
-	assert_eq!(reachability.reachability(3), &vec![true, true]);
+	assert_eq!(reachability.reachability(0), &bitvec![1,1]);
+	assert_eq!(reachability.reachability(1), &bitvec![1,0]);
+	assert_eq!(reachability.reachability(2), &bitvec![0,1]);
+	assert_eq!(reachability.reachability(3), &bitvec![1,1]);
 }
 
 #[test]
@@ -318,10 +311,10 @@ fn test_final_nodes_completness() {
 	*/
 	let mut reachability = Reachability::new();
 
-	reachability.set_root(vec![true, true]); // 0
-	reachability.add_node(vec![true, true]); // 1
-	reachability.add_node(vec![true, false]); // 2
-	reachability.add_node(vec![false, true]); // 3
+	reachability.set_root(bitvec![1,1]); // 0
+	reachability.add_node(bitvec![1,1]); // 1
+	reachability.add_node(bitvec![1,0]); // 2
+	reachability.add_node(bitvec![0,1]); // 3
 
 	reachability.add_edge(0, 1);
 	reachability.add_edge(1, 2);

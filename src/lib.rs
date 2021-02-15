@@ -1,4 +1,5 @@
 #![allow(dead_code, unused_imports)]
+#![feature(slice_group_by)]
 
 pub mod common;
 pub mod sample_space;
