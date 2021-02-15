@@ -1,13 +1,13 @@
-use crate::{rrt::{RRTFuncs, RRTTree}};
+use crate::{rrt::{Accessibility, RRTFuncs, RRTTree, WorldMask}};
 use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use image::Luma;
 use image::DynamicImage::ImageLuma8;
 use core::f64;
 use std::vec::Vec;
 use std::collections::HashSet;
-
 extern crate queues;
 use queues::*;
+use bitvec::prelude::*;
 
 #[derive(Debug, PartialEq)]
 pub enum Belief {
@@ -25,7 +25,7 @@ pub struct Map
 	zones: Option<image::GrayImage>,
 	n_zones: usize,
 	n_worlds: usize,
-	zones_to_worlds: Vec<Vec<bool>>
+	zones_to_worlds: Vec<WorldMask>
 }
 
 // Given N zones, there are 2^N possible worlds
@@ -42,7 +42,7 @@ impl Map {
 		let ij = self.to_pixel_coordinates(&*xy);
 		let p = self.img.get_pixel(ij[1], ij[0]);
 
-		p[0] == 255
+		p[0] > 0
 	}
 
 	pub fn is_state_valid_2(&self, xy: &[f64; 2]) -> Belief {
@@ -52,7 +52,7 @@ impl Map {
 		match p[0] {
 			255 => Belief::Always(true),
 			0 => Belief::Always(false),
-			p => Belief::Choice(self.get_zone_index(&ij).unwrap(), (p as f64) / 255.0)
+			p => Belief::Choice(self.get_zone_index(ij[0], ij[1]).unwrap(), (p as f64) / 255.0)
 		}
 	}
 
@@ -78,8 +78,8 @@ impl Map {
 		[i, j]
 	}
 
-	fn get_zone_index(&self, ij: &[u32; 2]) -> Option<usize> {
-		let p = self.zones.as_ref().expect("Zones missing").get_pixel(ij[1], ij[0]);
+	fn get_zone_index(&self, i: u32, j: u32) -> Option<usize> {
+		let p = self.zones.as_ref().expect("Zones missing").get_pixel(j, i);
 		match p[0] {
 			255 => None,
 			p => Some(p as usize),
@@ -100,7 +100,7 @@ impl Map {
 
 		let di = (b_ij[0] as i32 - a_ij[0] as i32).abs();
 		let dj = (b_ij[1] as i32- a_ij[1] as i32).abs();
-		
+
 		let n = if di > dj { di } else { dj };
 		for s in 0..n {
 			let lambda = (s as f64) / (n as f64);
@@ -130,7 +130,7 @@ impl Map {
 		let mut max_id = 0;
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
-				let z = self.get_zone_index(&[i, j]);
+				let z = self.get_zone_index(i, j);
 				match z {
 					Some(id) => {
 						if id > max_id {
@@ -147,31 +147,23 @@ impl Map {
 
 		// zone -> worlds
 		for i in 0..self.n_zones {
-			self.zones_to_worlds.push(self.zone_index_to_validity(i));
+			self.zones_to_worlds.push(self.zone_index_to_world_mask(i));
 		}
 	}
 
-	pub fn n_zones(&self) -> usize {
-		self.n_zones
-	}
-
-	pub fn n_worlds(&self) -> usize {
-		self.n_worlds
-	}
-
-	fn zone_index_to_validity(&self, zone_index: usize) -> Vec<bool> {
-		let mut validity = vec![true; self.n_worlds()];
-		for world in 0..self.n_worlds() {
+	fn zone_index_to_world_mask(&self, zone_index: usize) -> WorldMask {
+		//let mut validity = vec![true; self.n_worlds()];
+		let mut world_mask = bitvec![1; self.n_worlds];
+		for world in 0..self.n_worlds {
 			if !self.get_zone_status(world, zone_index).expect("Call with a correct world id") {
-				validity[world] = false
+				world_mask.set(world, false);
 			}
 		}
-
-		validity
+		world_mask
 	}
 
 	fn get_zone_status(&self, world: usize, zone_index: usize) -> Result<bool, ()> {
-		if zone_index < self.n_zones() && world < self.n_worlds() {
+		if zone_index < self.n_zones && world < self.n_worlds {
 			Ok(world & (1 << zone_index) != 0)
 		} else {
 			Err(())
@@ -188,7 +180,7 @@ impl Map {
 	}
 
 	pub fn draw_graph_for_world(&mut self, graph: &PRMGraph<2>, world:usize) {
-		if world > self.n_worlds() {
+		if world > self.n_worlds {
 			panic!("Invalid world id");
 		}
 
@@ -219,7 +211,7 @@ impl Map {
 	pub fn set_world(&mut self, world_id:usize) {
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
-				let z = self.get_zone_index(&[i, j]);
+				let z = self.get_zone_index(i, j);
 
 				match z {
 					Some(zone_id) => {
@@ -237,13 +229,55 @@ impl RRTFuncs<2> for Map {
 	fn state_validator(&self, state: &[f64; 2]) -> bool {
 		self.is_state_valid(state)
 	}
+
+	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Accessibility {
+		let a_ij = self.to_pixel_coordinates(&a);
+		let b_ij = self.to_pixel_coordinates(&b);
+
+		// TODO: simplify notations for casts
+
+		let di = (b_ij[0] as i32 - a_ij[0] as i32).abs();
+		let dj = (b_ij[1] as i32 - a_ij[1] as i32).abs();
+
+		let mut restricted_zone: Option<usize> = None;
+		
+		let n = if di > dj { di } else { dj };
+		for s in 0..n {
+			let lambda = (s as f64) / (n as f64);
+			let i = (a_ij[0] as i32 + (lambda * ((b_ij[0] as f64) - (a_ij[0] as f64))) as i32) as u32;
+			let j = (a_ij[1] as i32 + (lambda * ((b_ij[1] as f64) - (a_ij[1] as f64))) as i32) as u32;
+
+			// can be extracted as common for state_validator2()
+			let pixel = self.img.get_pixel(j, i);
+			let pixel_belief = match pixel[0] {
+				255 => Belief::Always(true),
+				0 => Belief::Always(false),
+				p => Belief::Choice(self.get_zone_index(i, j).unwrap(), (p as f64) / 255.0)
+			};
+
+			match (pixel_belief, restricted_zone) {
+			    (Belief::Always(false), _) => { return Accessibility::Never; }
+			    (Belief::Choice(zone, _), None) => { restricted_zone = Some(zone); }
+			    (Belief::Choice(zone, _), Some(zone_seen)) if zone != zone_seen => {
+					panic!("Multiple zones traversal not supported")
+				}
+				_ => {}
+			}
+		}
+
+		if let Some(zone) = restricted_zone {
+			Accessibility::Restricted(&self.zones_to_worlds[zone])
+		} else {
+			Accessibility::Always
+		}
+	}
 }
 
 impl PRMFuncs<2> for Map {
-	fn state_validity(&self, state: &[f64; 2]) -> Option<Vec<bool>> {
+	fn state_validity(&self, state: &[f64; 2]) -> Option<WorldMask> {
 		match self.is_state_valid_2(state) {
 			Belief::Choice(zone_index, _) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
-			Belief::Always(true) => {Some(vec![true; self.n_worlds()])},
+			Belief::Always(true) => {Some(bitvec![1; self.n_worlds])},
 			Belief::Always(false) => None
 		}
 	}
@@ -292,8 +326,8 @@ fn test_map_1_construction() {
 	let mut map = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map1_zone_ids.pgm");
 
-	assert_eq!(map.n_zones(), 1);
-	assert_eq!(map.n_worlds(), 2);
+	assert_eq!(map.n_zones, 1);
+	assert_eq!(map.n_worlds, 2);
 }
 
 #[test]
@@ -310,8 +344,8 @@ fn test_map_1_states() {
 
 	// world validities
 	assert_eq!(map.state_validity(&[0.1, 0.12]), None); // obstacle
-	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), vec![true, true]); // free space
-	assert_eq!(map.state_validity(&[0.57, 0.11]).unwrap(), vec![false, true]); // on door
+	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1, 1]); // free space
+	assert_eq!(map.state_validity(&[0.57, 0.11]).unwrap(), bitvec![0, 1]); // on door
 }
 
 // MAP 2 zones
@@ -320,8 +354,8 @@ fn test_map_2_construction() {
 	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map2_zone_ids.pgm");
 
-	assert_eq!(map.n_zones(),2);
-	assert_eq!(map.n_worlds(), 4);
+	assert_eq!(map.n_zones,2);
+	assert_eq!(map.n_worlds, 4);
 }
 
 #[test]
@@ -331,10 +365,10 @@ fn test_map_2_states() {
 
 	// world validity
 	assert_eq!(map.state_validity(&[0.1, 0.12]), None); // obstacle
-	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), vec![true, true, true, true]); // free space
+	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1,1,1,1]); // free space
 
-	assert_eq!(map.state_validity(&[0.51, -0.41]).unwrap(), vec![false, true, false, true]); // zone 0
-	assert_eq!(map.state_validity(&[0.57, 0.09]).unwrap(), vec![false, false, true, true]); // zone 1
+	assert_eq!(map.state_validity(&[0.51, -0.41]).unwrap(), bitvec![0,1,0,1]); // zone 0
+	assert_eq!(map.state_validity(&[0.57, 0.09]).unwrap(), bitvec![0,0,1,1]); // zone 1
 }
 
 // MAP 4 zones
@@ -343,8 +377,20 @@ fn test_map_4_construction() {
 	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map4_zone_ids.pgm");
 
-	assert_eq!(map.n_zones(), 4);
-	assert_eq!(map.n_worlds(), 16);
+	assert_eq!(map.n_zones, 4);
+	assert_eq!(map.n_worlds, 16);
+
+
+	let mut world_mask = bitvec![0; 16];
+	let zone = 1;
+
+	for i in 0..map.n_worlds {
+		if i & (zone << 1) != 0 {
+			*world_mask.get_mut(i).unwrap() = true;
+		}
+	}
+
+	assert_eq!(map.zones_to_worlds[zone], world_mask);
 }
 
 #[test]
@@ -359,6 +405,6 @@ fn test_map_4_states() {
 
 	// world validities
 	assert_eq!(map.state_validity(&[-0.29, -0.23]), None);
-	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), vec![true; 16]);
+	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1; 16]);
 }
 }

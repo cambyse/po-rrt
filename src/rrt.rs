@@ -5,6 +5,17 @@ use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
 use std::cmp::min;
+use bitvec::prelude::*;
+
+pub type WorldId = u32;
+pub type WorldMask = BitVec;
+
+#[derive(PartialEq)]
+pub enum Accessibility<'a> {
+	Always,
+	Never,
+	Restricted(&'a WorldMask),
+}
 
 pub struct RRTNode<const N: usize> {
 	pub state: [f64; N],
@@ -80,8 +91,8 @@ pub trait RRTFuncs<const N: usize> {
 		true
 	}
 
-	fn transition_validator(&self, _from: &[f64; N], _to: &[f64; N]) -> bool {
-		true
+	fn transition_validator(&self, _from: &[f64; N], _to: &[f64; N]) -> Accessibility {
+		Accessibility::Always
 	}
 
 	fn cost_evaluator(&self, a: &[f64; N], b: &[f64; N]) -> f64 {
@@ -128,17 +139,26 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 					if s < max_step { s } else { max_step }
 				};
 
-				let neighbour_ids = kdtree.nearest_neighbors(new_state, radius).iter()
-					.filter(|node| self.fns.transition_validator(&node.state, &new_state))
+				let mut neighbour_ids = kdtree.nearest_neighbors(new_state, radius);
+				if neighbour_ids.is_empty() {
+					neighbour_ids.push(kd_from);
+				}
+
+				let neighbour_ids = neighbour_ids.iter()
+					.filter(|node| self.fns.transition_validator(&node.state, &new_state) == Accessibility::Always)
 					.map(|node| node.id)
-					.collect();
+					.collect::<Vec<_>>();
+
+				if neighbour_ids.is_empty() {
+					continue;
+				}
 
 				// Evaluate which is the best parent that we can possibly get
 				let distances = rrttree.distances_from_common_ancestor(&neighbour_ids);
 				let (parent_id, parent_distance) = zip(&neighbour_ids, &distances)
 					.map(|(id,d)| (*id, *d))
 					.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-					.unwrap_or((kd_from.id, 0.0));
+					.unwrap();
 
 				// Add the node in the trees
 				let dist_from_parent = {
@@ -212,14 +232,15 @@ fn test_plan_empty_space() {
 
 #[test]
 fn test_plan_on_map() {
-	let mut m = Map::open("data/rrt_map_0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm");
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);
-	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.05, 5.0, 5000);
+	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 5000);
 
 	assert!(path_result.as_ref().expect("No path found!").len() > 2);
 
