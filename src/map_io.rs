@@ -107,7 +107,7 @@ impl Map {
 			let i = (a_ij[0] as i32 + (lambda * ((b_ij[0] as f64) - (a_ij[0] as f64))) as i32) as u32;
 			let j = (a_ij[1] as i32+ (lambda * ((b_ij[1] as f64) - (a_ij[1] as f64))) as i32) as u32;
 			
-			let c = if s < n/2 { color/2 } else { color };
+			let c = if s < n/2 { color /*/2*/ } else { color };
 			self.img.put_pixel(j, i, Luma([c]));
 		}
 	}
