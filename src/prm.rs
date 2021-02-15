@@ -1,11 +1,10 @@
 use itertools::{all, enumerate, izip, merge, zip};
 
-use crate::{common::*, rrt::WorldMask};
+use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
-use crate::map_io::*;
+use crate::map_io::*; // tests only
 use crate::prm_graph::*;
-use crate::prm_graph;
 use bitvec::prelude::*;
 
 pub struct Reachability {
@@ -103,8 +102,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let world = self.discrete_sampler.sample(self.n_worlds);
 
 			// Second, retrieve closest node for sampled world and steer from there
-			//let kd_from = kdtree.nearest_neighbor(new_state); // n log n
-			let kd_from = kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // n log n
+			let kd_from = kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // log n
 			steer(&kd_from.state, &mut new_state, max_step); 
 
 			let state_validity = self.fns.state_validity(&new_state);
@@ -217,8 +215,8 @@ use super::*;
 
 #[test]
 fn test_plan_on_map() {
-	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map4_zone_ids.pgm");
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm");
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
@@ -228,7 +226,7 @@ fn test_plan_on_map() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000);
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 100000);
 
 	prm.print_summary();
 	
@@ -369,3 +367,8 @@ fn test_final_nodes_completness() {
 // - more efficient tree growing
 // - reachability
 // - serializaion
+// TODO:
+// - error fow
+// - avoid copies
+// - plan from random point
+// - extract common path

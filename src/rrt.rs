@@ -5,10 +5,6 @@ use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
 use std::{cmp::min, collections::{self, HashSet}};
-use bitvec::prelude::*;
-
-pub type WorldId = u32;
-pub type WorldMask = BitVec;
 
 #[derive(PartialEq, Eq, Hash)]
 pub enum Reachable<'a> {
@@ -49,7 +45,7 @@ impl<'a, const N: usize> RRTTree<'a, N> {
 		node.parents = parents;
 	}
 
-	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>, world_mask: &Reachable) -> Vec<f64> {
+	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>, _world_mask: &Reachable) -> Vec<f64> {
 		if leaf_ids.is_empty() {
 			return vec![];
 		}
@@ -58,7 +54,7 @@ impl<'a, const N: usize> RRTTree<'a, N> {
 			return vec![0.0];
 		}
 
-		let compute_distance_from_root = |mut node_id: usize| {
+		let compute_distance_from_root = |mut _node_id: usize| {
 			return 0.0;
 			/*
 			let mut cost = 0.0;
@@ -76,7 +72,7 @@ impl<'a, const N: usize> RRTTree<'a, N> {
 			.collect()
 	}
 
-	fn get_path_to(&self, id: usize) -> Vec<(WorldMask, Vec<[f64; N]>)> {
+	fn get_path_to(&self, _id: usize) -> Vec<(WorldMask, Vec<[f64; N]>)> {
 		return vec![];
 		/* 
 		let mut path = Vec::new();
@@ -176,7 +172,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 				for (world_mask, neighbour_ids) in worldmask_neighbours.into_iter() {
 					// Evaluate which is the best parent that we can possibly get
 					let distances = self.rrttree.distances_from_common_ancestor(&neighbour_ids, &world_mask);
-					let (parent_id, parent_distance) = zip(&neighbour_ids, &distances)
+					let (parent_id, _parent_distance) = zip(&neighbour_ids, &distances)
 						.map(|(id,d)| (*id, *d))
 						.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
 						.unwrap();
@@ -219,7 +215,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 		final_node_ids
 	}
 
-	fn get_best_solution(&self, final_node_ids: &Vec<usize>) -> Vec<(WorldMask, Vec<[f64; N]>)> {
+	fn get_best_solution(&self, _final_node_ids: &Vec<usize>) -> Vec<(WorldMask, Vec<[f64; N]>)> {
 		return vec![];
 		/*
 		final_node_ids.iter()
@@ -257,7 +253,7 @@ fn test_plan_empty_space() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &Funcs{});
 
-	let path_result = rrt.plan([0.0, 0.0], goal, 0.1, 1.0, 1000);
+	let _path_result = rrt.plan([0.0, 0.0], goal, 0.1, 1.0, 1000);
 	//assert!(path_result.as_ref().expect("No path found!").len() > 2);
 }
 
@@ -271,7 +267,7 @@ fn test_plan_on_map() {
 	}	
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);
-	let path_result = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 5000);
+	let _path_result = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 5000);
 
 	//assert!(path_result.as_ref().expect("No path found!").len() > 2);
 	let mut m = m.clone();

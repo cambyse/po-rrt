@@ -1,6 +1,7 @@
 use itertools::izip;
 use std::{iter::Zip, rc::{Weak, Rc}, slice::Iter};
 use std::cell::RefCell;
+use bitvec::prelude::*;
 
 pub fn norm1<const N: usize>(a: &[f64; N], b: &[f64; N]) -> f64 {
 	let mut d = 0.0;
@@ -39,3 +40,6 @@ pub fn steer<const N: usize>(from: &[f64;N], to: &mut [f64;N], max_step: f64) {
 pub fn pairwise_iter<T>(v: &Vec<T>) -> Zip<Iter<T>, Iter<T>> {
 	v[0..v.len()-1].iter().zip(&v[1..])
 }
+
+pub type WorldId = u32;
+pub type WorldMask = BitVec;
