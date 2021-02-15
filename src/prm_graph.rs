@@ -326,6 +326,17 @@ fn test_dijkstra_on_grid_graph_two_goals() {
 }
 
 #[test]
+fn test_dijkstra_without_final_node() {
+	let graph = create_grid_graph();
+
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+	let dists = dijkstra(&graph, &vec![], 0, &Funcs{});
+
+	assert_eq!(dists, vec![std::f64::INFINITY; 9]);
+}
+
+#[test]
 fn test_dijkstra_on_oriented_grid() {
 	let graph = create_oriented_grid_graph();
 
