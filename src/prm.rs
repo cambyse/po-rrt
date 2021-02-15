@@ -224,8 +224,8 @@ use super::*;
 
 #[test]
 fn test_plan_on_map() {
-	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm");
+	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map4_zone_ids.pgm");
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
@@ -235,24 +235,23 @@ fn test_plan_on_map() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 100000);
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000);
 
 	prm.print_summary();
 	
 	let paths = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
 
-	// loop:
-	// prm.plan(position, prior); 	// potentiallement adapter graph si on arrive dans un monde improbable lors du precompute
-
-	let world = 0; 
 	let mut full = m.clone();
-	//full.set_world(world);
 	full.draw_full_graph(&prm.graph);
-	//full.draw_graph_for_world(&prm.graph, world);
 	for path in paths {
 		full.draw_path(path);
 	}
 	full.save("results/test_prm_graph.pgm");
+}
+
+#[test]
+fn test_when_grow_graph_doesnt_reach_goal() {
+
 }
 
 #[test]
