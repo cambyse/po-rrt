@@ -96,19 +96,14 @@ impl Map {
 		let a_ij = self.to_pixel_coordinates(&a);
 		let b_ij = self.to_pixel_coordinates(&b);
 
-		// TODO: simplify notations for casts
+		let a = (a_ij[0] as f32, a_ij[1] as f32);
+		let b = (b_ij[0] as f32, b_ij[1] as f32);
 
-		let di = (b_ij[0] as i32 - a_ij[0] as i32).abs();
-		let dj = (b_ij[1] as i32- a_ij[1] as i32).abs();
-
-		let n = if di > dj { di } else { dj };
-		for s in 0..n {
-			let lambda = (s as f64) / (n as f64);
-			let i = (a_ij[0] as i32 + (lambda * ((b_ij[0] as f64) - (a_ij[0] as f64))) as i32) as u32;
-			let j = (a_ij[1] as i32+ (lambda * ((b_ij[1] as f64) - (a_ij[1] as f64))) as i32) as u32;
-			
-			let c = if s < n/2 { color/2 } else { color };
-			self.img.put_pixel(j, i, Luma([c]));
+		for ((i, j), value) in line_drawing::XiaolinWu::<f32, i32>::new(a, b) {
+			let pixel = self.img.get_pixel_mut(j as u32, i as u32);
+			let old_color = pixel.0[0];
+			let new_color = ((1.0 - value) * (old_color as f32) + value * (color as f32)) as u8;
+			pixel.0 = [new_color];
 		}
 	}
 
@@ -234,25 +229,18 @@ impl RRTFuncs<2> for Map {
 		let a_ij = self.to_pixel_coordinates(&a);
 		let b_ij = self.to_pixel_coordinates(&b);
 
-		// TODO: simplify notations for casts
-
-		let di = (b_ij[0] as i32 - a_ij[0] as i32).abs();
-		let dj = (b_ij[1] as i32 - a_ij[1] as i32).abs();
+		let a = (a_ij[0] as i32, a_ij[1] as i32);
+		let b = (b_ij[0] as i32, b_ij[1] as i32);
 
 		let mut restricted_zone: Option<usize> = None;
-		
-		let n = if di > dj { di } else { dj };
-		for s in 0..n {
-			let lambda = (s as f64) / (n as f64);
-			let i = (a_ij[0] as i32 + (lambda * ((b_ij[0] as f64) - (a_ij[0] as f64))) as i32) as u32;
-			let j = (a_ij[1] as i32 + (lambda * ((b_ij[1] as f64) - (a_ij[1] as f64))) as i32) as u32;
 
+		for (i, j) in line_drawing::Bresenham::new(a, b) {
 			// can be extracted as common for state_validator2()
-			let pixel = self.img.get_pixel(j, i);
+			let pixel = self.img.get_pixel(j as u32, i as u32);
 			let pixel_belief = match pixel[0] {
 				255 => Belief::Always(true),
 				0 => Belief::Always(false),
-				p => Belief::Choice(self.get_zone_index(i, j).unwrap(), (p as f64) / 255.0)
+				p => Belief::Choice(self.get_zone_index(i as u32, j as u32).unwrap(), (p as f64) / 255.0)
 			};
 
 			match (pixel_belief, restricted_zone) {
