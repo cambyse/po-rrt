@@ -370,5 +370,7 @@ fn test_final_nodes_completness() {
 // TODO:
 // - error fow
 // - avoid copies
+// - add transition check
 // - plan from random point
 // - extract common path
+// - multithread dijkstra

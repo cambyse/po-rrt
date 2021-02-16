@@ -164,6 +164,8 @@ impl PartialEq for Priority {
 impl Eq for Priority {}
 
 pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMGraph<N>, final_node_ids: &Vec<usize>, world: usize, m: &F) -> Vec<f64> {
+	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
+	// complexité n log n
 	let mut dist = vec![std::f64::INFINITY ;graph.nodes.len()];
 	let mut prev = vec![0 ;graph.nodes.len()];
 	let mut q = PriorityQueue::new();
