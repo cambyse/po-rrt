@@ -85,7 +85,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	pub fn grow_graph(&mut self, &start: &[f64; N], goal: fn(&[f64; N]) -> bool,
-				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> bool {
+				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<(), &'static str> {
 
 		let root_validity = self.fns.state_validity(&start).expect("Start from a valid state!");
 		self.n_worlds = root_validity.len();
@@ -156,7 +156,10 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		self.n_it += i;
 
-		self.conservative_reachability.is_final_set_complete()
+		match self.conservative_reachability.is_final_set_complete() {
+			true => Ok(()),
+			_ => Err(&"final nodes are not reached for each world")
+		}
 	}
 
 	pub fn plan(&mut self, _: &[f64; N], _: &Vec<f64>) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
@@ -226,12 +229,11 @@ fn test_plan_on_map() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 100000);
-
-	prm.print_summary();
-	
+	let result = prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 100000);
+	assert_eq!(result, Ok(()));
 	let paths = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
 
+	prm.print_summary();
 	let mut full = m.clone();
 	full.draw_full_graph(&prm.graph);
 	for path in paths {
@@ -241,8 +243,22 @@ fn test_plan_on_map() {
 }
 
 #[test]
+#[should_panic]
 fn test_when_grow_graph_doesnt_reach_goal() {
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm");
 
+	fn goal(state: &[f64; 2]) -> bool {
+		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+	}
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSampler::new(),
+						   &m);
+
+	assert_ne!(Ok(()), prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 300, 1000));
+
+	prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap(); // panics
 }
 
 #[test]
@@ -367,8 +383,8 @@ fn test_final_nodes_completness() {
 // - more efficient tree growing
 // - reachability
 // - serializaion
+// - error flow
 // TODO:
-// - error fow
 // - avoid copies
 // - add transition check
 // - plan from random point
