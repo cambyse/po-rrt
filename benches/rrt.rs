@@ -12,8 +12,7 @@ fn rrt(max_iter: u32) {
 	}	
 
     let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &Funcs{});
-    let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 10.0, max_iter);
-    path_result.unwrap();
+    let _ = rrt.plan([0.0, 0.0], goal, 0.1, 10.0, max_iter);
 }
 
 fn rrt_map(map: &Map, max_iter: u32) {
@@ -22,7 +21,7 @@ fn rrt_map(map: &Map, max_iter: u32) {
 	}	
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), map);
-    let (_, _) = rrt.plan([0.0, -0.8], goal, 0.1, 10.0, max_iter);
+    let _ = rrt.plan([0.0, -0.8], goal, 0.1, 10.0, max_iter);
 }
 
 

@@ -24,3 +24,7 @@ criterion = "0.3"
 [[bench]]
 name = "rrt"
 harness = false
+
+[[bench]]
+name = "prm"
+harness = false
