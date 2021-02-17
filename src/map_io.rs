@@ -1,7 +1,7 @@
 use crate::{rrt::{Reachable, RRTFuncs, RRTTree}};
 use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use crate::common::*;
-use image::Luma;
+use image::{GenericImageView, Luma};
 use image::DynamicImage::ImageLuma8;
 use core::f64;
 use std::vec::Vec;
@@ -101,10 +101,12 @@ impl Map {
 		let b = (b_ij[0] as f32, b_ij[1] as f32);
 
 		for ((i, j), value) in line_drawing::XiaolinWu::<f32, i32>::new(a, b) {
-			let pixel = self.img.get_pixel_mut(j as u32, i as u32);
-			let old_color = pixel.0[0];
-			let new_color = ((1.0 - value) * (old_color as f32) + value * (color as f32)) as u8;
-			pixel.0 = [new_color];
+			if 0 <= i && i < self.img.height() as i32 && 0 <= j && j < self.img.width() as i32 {
+				let pixel = self.img.get_pixel_mut(j as u32, i as u32);
+				let old_color = pixel.0[0];
+				let new_color = ((1.0 - value) * (old_color as f32) + value * (color as f32)) as u8;
+				pixel.0 = [new_color];
+			}
 		}
 	}
 
