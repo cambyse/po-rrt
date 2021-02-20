@@ -33,9 +33,23 @@ impl Reachability {
 	}
 
 	pub fn add_edge(&mut self, from: usize, to: usize) {
-		let mut tmp = self.reachability[from].clone();
+		/*let mut tmp = self.reachability[from].clone();
 		tmp &= self.validity[to].clone();
 		self.reachability[to] |= tmp;
+		*/
+
+		/*self.reachability[to] = 
+		izip!(self.reachability[from].iter(), self.reachability[to].iter(), self.validity[to].iter())
+		.map(|(r_from, r_to, v_to)| *r_to || (*r_from && *v_to) )
+		.collect();*/
+
+		// this version appears to be the fastest
+		for i in 0..self.reachability[to].len() {
+			let rto = self.reachability[to][i];
+			let rfo = self.reachability[from][i];
+			let vto = self.validity[to][i];
+			self.reachability[to].set(i, rto || rfo && vto);
+		}
 	}
 
 	pub fn reachability(&self, id: usize) -> &WorldMask {
@@ -120,10 +134,13 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				};
 
 				// Fifth we connect to neighbors 
-				let neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
+				let mut neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
 				.map(|&kd_node| kd_node.id)
 				.collect();
 
+				if neighbour_ids.is_empty() { neighbour_ids.push(kd_from.id); }
+
+				// Idea: sample which ones we rewire to?
 				let fwd_ids: Vec<usize> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
 					.filter(|(_, node)| self.fns.transition_validator(node, new_node))
@@ -386,6 +403,7 @@ fn test_final_nodes_completness() {
 // - error flow
 // TODO:
 // - avoid copies
+// - optimize nearest neighbor (avoid sqrt)
 // - add transition check
 // - plan from random point
 // - extract common path
