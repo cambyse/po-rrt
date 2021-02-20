@@ -23,7 +23,7 @@ impl Reachability {
 		self.reachability.push(validity);
 	}
 
-	pub fn add_node<'a> (&mut self, validity: WorldMask) {
+	pub fn add_node(&mut self, validity: WorldMask) {
 		self.validity.push(validity.clone());
 		self.reachability.push(bitvec![0; validity.len()]);
 	}
@@ -119,12 +119,11 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let kd_from = kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // log n
 			steer(&kd_from.state, &mut new_state, max_step); 
 
-			let state_validity = self.fns.state_validity(&new_state);
-			if state_validity.is_some() {
+			if let Some(state_validity) = self.fns.state_validity(&new_state) {
 				// Third, add node
-				let new_node_id = self.graph.add_node(new_state, state_validity.clone().unwrap());
+				let new_node_id = self.graph.add_node(new_state, state_validity.clone());
 				let new_node = &self.graph.nodes[new_node_id];
-				self.conservative_reachability.add_node(state_validity.unwrap());
+				self.conservative_reachability.add_node(state_validity);
 
 				// Fourth, we find the neighbors in a specific radius of new_state.
 				let radius = {
@@ -192,7 +191,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		let mut paths : Vec<Vec<[f64; N]>> = vec![Vec::new(); self.n_worlds];
 		for world in 0..self.n_worlds {
-			paths[world] = self.get_path(world).expect("path should be succesfully extracted at this stage, since each world has final nodes");
+			paths[world] = self.get_path(0, world).expect("path should be succesfully extracted at this stage, since each world has final nodes");
 		}
 
 		Ok(paths)
@@ -203,10 +202,10 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.graph.print_summary();
 	}
 
-	fn get_path(&self, world: usize) -> Result<Vec<[f64; N]>, &'static str> {
+	fn get_path(&self, start_id:usize, world: usize) -> Result<Vec<[f64; N]>, &'static str> {
 		let mut path: Vec<[f64; N]> = Vec::new();
 
-		let mut id = 0;
+		let mut id = start_id;
 		while self.cost_to_goals[world][id] > 0.0 {
 			let node = &self.graph.nodes[id]; 
 			path.push(node.state);
