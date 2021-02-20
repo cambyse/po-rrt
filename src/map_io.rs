@@ -165,7 +165,7 @@ impl Map {
 		let w = self.img.width() * factor;
 		let h = self.img.height() * factor;
 		
-		let resized_im = DynamicImage::ImageLuma8(self.img.clone()).resize(w, h, image::imageops::FilterType::Nearest);
+		let resized_im = DynamicImage::ImageLuma8(self.img.clone()).resize(w, h, image::imageops::FilterType::Lanczos3);
 		self.img = match resized_im {
 			ImageLuma8(gray_img) => gray_img,
 			_ => panic!("Wrong image format!"),
@@ -174,7 +174,7 @@ impl Map {
 		self.ppm *= factor as f64;
 
 		if let Some(zone_img) = &self.zones {
-			let resized_zones = DynamicImage::ImageLuma8(zone_img.clone()).resize(w, h, image::imageops::FilterType::Nearest);
+			let resized_zones = DynamicImage::ImageLuma8(zone_img.clone()).resize(w, h, image::imageops::FilterType::Lanczos3);
 			self.zones = match resized_zones {
 			ImageLuma8(gray_img) => Some(gray_img),
 			_ => panic!("Wrong image format!"),
