@@ -1,7 +1,7 @@
 use crate::{rrt::{Reachable, RRTFuncs, RRTTree}};
 use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use crate::common::*;
-use image::{GenericImageView, Luma};
+use image::{DynamicImage, GenericImageView, Luma};
 use image::DynamicImage::ImageLuma8;
 use core::f64;
 use std::vec::Vec;
@@ -161,6 +161,27 @@ impl Map {
 	}
 
 	// drawing functions
+	pub fn resize(&mut self, factor: u32) {
+		let w = self.img.width() * factor;
+		let h = self.img.height() * factor;
+		
+		let resized_im = DynamicImage::ImageLuma8(self.img.clone()).resize(w, h, image::imageops::FilterType::Nearest);
+		self.img = match resized_im {
+			ImageLuma8(gray_img) => gray_img,
+			_ => panic!("Wrong image format!"),
+		};
+
+		self.ppm *= factor as f64;
+
+		if let Some(zone_img) = &self.zones {
+			let resized_zones = DynamicImage::ImageLuma8(zone_img.clone()).resize(w, h, image::imageops::FilterType::Nearest);
+			self.zones = match resized_zones {
+			ImageLuma8(gray_img) => Some(gray_img),
+			_ => panic!("Wrong image format!"),
+		};
+		}
+	}
+
 	pub fn draw_path(&mut self, path: Vec<[f64;2]>) {
 		for i in 1..path.len() {
 			self.draw_line(path[i-1], path[i], 0);
@@ -407,4 +428,15 @@ fn test_map_4_states() {
 
 	assert_eq!(map.zones_to_worlds[zone], world_mask);
 }
+
+#[test]
+fn test_resize_image() {
+	let mut m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.resize(2);
+	
+	m.save("results/tmp.pgm");
+	assert!(Path::new("results/tmp.pgm").exists());
+	fs::remove_file("results/tmp.pgm").unwrap();
+}
+
 }

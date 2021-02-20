@@ -45,10 +45,10 @@ impl Reachability {
 
 		// this version appears to be the fastest
 		for i in 0..self.reachability[to].len() {
-			let rto = self.reachability[to][i];
-			let rfo = self.reachability[from][i];
-			let vto = self.validity[to][i];
-			self.reachability[to].set(i, rto || rfo && vto);
+			let r_to = self.reachability[to][i];
+			let r_from = self.reachability[from][i];
+			let v_to = self.validity[to][i];
+			self.reachability[to].set(i, r_to || r_from && v_to);
 		}
 	}
 
@@ -252,6 +252,7 @@ fn test_plan_on_map() {
 
 	prm.print_summary();
 	let mut full = m.clone();
+	full.resize(5);
 	full.draw_full_graph(&prm.graph);
 	for path in paths {
 		full.draw_path(path);
@@ -401,10 +402,11 @@ fn test_final_nodes_completness() {
 // - reachability
 // - serializaion
 // - error flow
+// - add transition check
+// - resize map
 // TODO:
 // - avoid copies
-// - optimize nearest neighbor (avoid sqrt)
-// - add transition check
-// - plan from random point
 // - extract common path
+// - plan from random point
+// - optimize nearest neighbor (avoid sqrt)
 // - multithread dijkstra

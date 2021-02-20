@@ -271,6 +271,7 @@ fn test_plan_on_map() {
 
 	//assert!(path_result.as_ref().expect("No path found!").len() > 2);
 	let mut m = m.clone();
+	m.resize(5);
 
 	m.draw_tree(&rrt.rrttree);
 	//m.draw_path(path_result.unwrap());
