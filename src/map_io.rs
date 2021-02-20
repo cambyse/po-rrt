@@ -12,8 +12,9 @@ use bitvec::prelude::*;
 
 #[derive(Debug, PartialEq)]
 pub enum Belief {
-	Always(bool),
-	Choice(usize, f64),
+	Free,
+	Obstacle,
+	Zone(usize),
 }
 
 #[derive(Clone)]
@@ -39,76 +40,12 @@ impl Map {
 		self.img.save(filepath).expect("Couldn't save image");
 	}
 
-	pub fn is_state_valid(&self, xy: &[f64; 2]) -> bool {
-		let ij = self.to_pixel_coordinates(&*xy);
-		let p = self.img.get_pixel(ij[1], ij[0]);
-
-		p[0] > 0
-	}
-
-	pub fn is_state_valid_2(&self, xy: &[f64; 2]) -> Belief {
-		let ij = self.to_pixel_coordinates(&*xy);
-		let p = self.img.get_pixel(ij[1], ij[0]);
-
-		match p[0] {
-			255 => Belief::Always(true),
-			0 => Belief::Always(false),
-			p => Belief::Choice(self.get_zone_index(ij[0], ij[1]).unwrap(), (p as f64) / 255.0)
-		}
-	}
-
-	pub fn draw_path(&mut self, path: Vec<[f64;2]>) {
-		for i in 1..path.len() {
-			self.draw_line(path[i-1], path[i], 0);
-		}
-	}
-
-	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
-		for c in &rrttree.nodes {
-			for parent in &c.parents {
-				let parent = &rrttree.nodes[parent.id];
-				self.draw_line(parent.state, c.state, 180);
-			}
-		}
-	}
-
-	fn to_pixel_coordinates(&self, xy: &[f64; 2]) -> [u32; 2] {
-		let i: u32 = (((self.img.height() - 1) as f64) - (xy[1] - self.low[1]) * self.ppm) as u32;
-		let j: u32 = ((xy[0] - self.low[0]) * self.ppm) as u32;
-
-		[i, j]
-	}
-
-	fn get_zone_index(&self, i: u32, j: u32) -> Option<usize> {
-		let p = self.zones.as_ref().expect("Zones missing").get_pixel(j, i);
-		match p[0] {
-			255 => None,
-			p => Some(p as usize),
-		}
-	}
-
 	fn build(img: image::GrayImage, low: [f64; 2], up: [f64; 2])-> Map {
 		let ppm = (img.width() as f64) / (up[0] - low[0]);
 
 		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new()}
 	}
 
-	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: u8) {
-		let a_ij = self.to_pixel_coordinates(&a);
-		let b_ij = self.to_pixel_coordinates(&b);
-
-		let a = (a_ij[0] as f32, a_ij[1] as f32);
-		let b = (b_ij[0] as f32, b_ij[1] as f32);
-
-		for ((i, j), value) in line_drawing::XiaolinWu::<f32, i32>::new(a, b) {
-			if 0 <= i && i < self.img.height() as i32 && 0 <= j && j < self.img.width() as i32 {
-				let pixel = self.img.get_pixel_mut(j as u32, i as u32);
-				let old_color = pixel.0[0];
-				let new_color = ((1.0 - value) * (old_color as f32) + value * (color as f32)) as u8;
-				pixel.0 = [new_color];
-			}
-		}
-	}
 
 	fn open_image(filepath : &str) -> image::GrayImage {
 		let img = image::open(filepath).expect(&format!("Impossible to open image: {}", filepath));
@@ -149,8 +86,40 @@ impl Map {
 		}
 	}
 
+	pub fn is_state_valid(&self, xy: &[f64; 2]) -> bool {
+		let ij = self.to_pixel_coordinates(&*xy);
+		let p = self.img.get_pixel(ij[1], ij[0]);
+
+		p[0] > 0
+	}
+
+	pub fn is_state_valid_2(&self, xy: &[f64; 2]) -> Belief {
+		let ij = self.to_pixel_coordinates(&*xy);
+		let p = self.img.get_pixel(ij[1], ij[0]);
+
+		match p[0] {
+			255 => Belief::Free,
+			0 => Belief::Obstacle,
+			_ => Belief::Zone(self.get_zone_index(ij[0], ij[1]).unwrap())
+		}
+	}
+
+	fn to_pixel_coordinates(&self, xy: &[f64; 2]) -> [u32; 2] {
+		let i: u32 = (((self.img.height() - 1) as f64) - (xy[1] - self.low[1]) * self.ppm) as u32;
+		let j: u32 = ((xy[0] - self.low[0]) * self.ppm) as u32;
+
+		[i, j]
+	}
+
+	fn get_zone_index(&self, i: u32, j: u32) -> Option<usize> {
+		let p = self.zones.as_ref().expect("Zones missing").get_pixel(j, i);
+		match p[0] {
+			255 => None,
+			p => Some(p as usize),
+		}
+	}
+
 	fn zone_index_to_world_mask(&self, zone_index: usize) -> WorldMask {
-		//let mut validity = vec![true; self.n_worlds()];
 		let mut world_mask = bitvec![1; self.n_worlds];
 		for world in 0..self.n_worlds {
 			if !self.get_zone_status(world, zone_index).expect("Call with a correct world id") {
@@ -165,6 +134,62 @@ impl Map {
 			Ok(world & (1 << zone_index) != 0)
 		} else {
 			Err(())
+		}
+	}
+
+	fn get_traversed_space(&self, a: &[f64; 2], b: &[f64; 2]) -> Belief {
+		let mut traversed_space = Belief::Free;
+
+		let a_ij = self.to_pixel_coordinates(a);
+		let b_ij = self.to_pixel_coordinates(b);
+
+		let a = (a_ij[0] as i32, a_ij[1] as i32);
+		let b = (b_ij[0] as i32, b_ij[1] as i32);
+
+		for (i, j) in line_drawing::Bresenham::new(a, b) {
+			let pixel = self.img.get_pixel(j as u32, i as u32);
+			match pixel[0] {
+				255 => {},
+				0 => {return Belief::Obstacle; },
+				_ => {					
+					traversed_space = Belief::Zone(self.get_zone_index(i as u32, j as u32).unwrap());
+				}
+			};
+		}
+
+		traversed_space
+	}
+
+	// drawing functions
+	pub fn draw_path(&mut self, path: Vec<[f64;2]>) {
+		for i in 1..path.len() {
+			self.draw_line(path[i-1], path[i], 0);
+		}
+	}
+
+	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
+		for c in &rrttree.nodes {
+			for parent in &c.parents {
+				let parent = &rrttree.nodes[parent.id];
+				self.draw_line(parent.state, c.state, 180);
+			}
+		}
+	}
+
+	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: u8) {
+		let a_ij = self.to_pixel_coordinates(&a);
+		let b_ij = self.to_pixel_coordinates(&b);
+
+		let a = (a_ij[0] as f32, a_ij[1] as f32);
+		let b = (b_ij[0] as f32, b_ij[1] as f32);
+
+		for ((i, j), value) in line_drawing::XiaolinWu::<f32, i32>::new(a, b) {
+			if 0 <= i && i < self.img.height() as i32 && 0 <= j && j < self.img.width() as i32 {
+				let pixel = self.img.get_pixel_mut(j as u32, i as u32);
+				let old_color = pixel.0[0];
+				let new_color = ((1.0 - value) * (old_color as f32) + value * (color as f32)) as u8;
+				pixel.0 = [new_color];
+			}
 		}
 	}
 
@@ -206,7 +231,7 @@ impl Map {
 		}
 	}
 
-	pub fn set_world(&mut self, world_id:usize) {
+	pub fn draw_world(&mut self, world_id:usize) {
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
 				let z = self.get_zone_index(i, j);
@@ -229,37 +254,12 @@ impl RRTFuncs<2> for Map {
 	}
 
 	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Reachable {
-		let a_ij = self.to_pixel_coordinates(&a);
-		let b_ij = self.to_pixel_coordinates(&b);
+		let space = self.get_traversed_space(a, b);
 
-		let a = (a_ij[0] as i32, a_ij[1] as i32);
-		let b = (b_ij[0] as i32, b_ij[1] as i32);
-
-		let mut restricted_zone: Option<usize> = None;
-
-		for (i, j) in line_drawing::Bresenham::new(a, b) {
-			// can be extracted as common for state_validator2()
-			let pixel = self.img.get_pixel(j as u32, i as u32);
-			let pixel_belief = match pixel[0] {
-				255 => Belief::Always(true),
-				0 => Belief::Always(false),
-				p => Belief::Choice(self.get_zone_index(i as u32, j as u32).unwrap(), (p as f64) / 255.0)
-			};
-
-			match (pixel_belief, restricted_zone) {
-			    (Belief::Always(false), _) => { return Reachable::Never; }
-			    (Belief::Choice(zone, _), None) => { restricted_zone = Some(zone); }
-			    (Belief::Choice(zone, _), Some(zone_seen)) if zone != zone_seen => {
-					panic!("Multiple zones traversal not supported")
-				}
-				_ => {}
-			}
-		}
-
-		if let Some(zone) = restricted_zone {
-			Reachable::Restricted(&self.zones_to_worlds[zone])
-		} else {
-			Reachable::Always
+		match space {
+			Belief::Free => { Reachable::Always },
+			Belief::Obstacle => { Reachable::Never },
+			Belief::Zone(zone) => { Reachable::Restricted(&self.zones_to_worlds[zone]) }
 		}
 	}
 }
@@ -267,10 +267,19 @@ impl RRTFuncs<2> for Map {
 impl PRMFuncs<2> for Map {
 	fn state_validity(&self, state: &[f64; 2]) -> Option<WorldMask> {
 		match self.is_state_valid_2(state) {
-			Belief::Choice(zone_index, _) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
-			Belief::Always(true) => {Some(bitvec![1; self.n_worlds])},
-			Belief::Always(false) => None
+			Belief::Zone(zone_index) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
+			Belief::Free => {Some(bitvec![1; self.n_worlds])},
+			Belief::Obstacle => None
 		}
+	}
+
+	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> bool {
+		let symbolic_validity = from.validity.iter().zip(&to.validity)
+		.any(|(a, b)| *a && *b);
+
+		let geometric_validitiy = self.get_traversed_space(&from.state, &to.state) != Belief::Obstacle;
+
+		symbolic_validity && geometric_validitiy
 	}
 }
 
@@ -370,8 +379,23 @@ fn test_map_4_construction() {
 
 	assert_eq!(map.n_zones, 4);
 	assert_eq!(map.n_worlds, 16);
+}
 
+#[test]
+fn test_map_4_states() {
+	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map4_zone_ids.pgm");
 
+	// door validity
+	assert_eq!(map.is_state_valid_2(&[0.0, 0.0]), Belief::Free);
+	assert_eq!(map.is_state_valid_2(&[0.0, -0.24]), Belief::Obstacle);
+	assert_eq!(map.is_state_valid_2(&[-0.67, -0.26]), Belief::Zone(0));
+
+	// world validities
+	assert_eq!(map.state_validity(&[-0.29, -0.23]), None);
+	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1; 16]);
+
+	// world ennumerations
 	let mut world_mask = bitvec![0; 16];
 	let zone = 1;
 
@@ -382,20 +406,5 @@ fn test_map_4_construction() {
 	}
 
 	assert_eq!(map.zones_to_worlds[zone], world_mask);
-}
-
-#[test]
-fn test_map_4_states() {
-	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map4_zone_ids.pgm");
-
-	// door validity
-	assert_eq!(map.is_state_valid_2(&[0.0, 0.0]), Belief::Always(true));
-	assert_eq!(map.is_state_valid_2(&[0.0, -0.24]), Belief::Always(false));
-	assert_eq!(map.is_state_valid_2(&[-0.67, -0.26]), Belief::Choice(0, 128.0/255.0));
-
-	// world validities
-	assert_eq!(map.state_validity(&[-0.29, -0.23]), None);
-	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1; 16]);
 }
 }
