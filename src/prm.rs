@@ -119,8 +119,6 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					if s < max_step { s } else { max_step }
 				};
 
-				kdtree.add(new_state, new_node_id);
-
 				// Fifth we connect to neighbors 
 				let neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
 				.map(|&kd_node| kd_node.id)
@@ -147,10 +145,12 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					self.graph.add_edge(new_node_id, id);
 					self.conservative_reachability.add_edge(new_node_id, id);
 				}
-
+					
 				if goal(&new_state) {
 					self.conservative_reachability.add_final_node(new_node_id);
 				}
+
+				kdtree.add(new_state, new_node_id);
 			}
 		}
 
@@ -229,7 +229,7 @@ fn test_plan_on_map() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	let result = prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 3000, 100000);
+	let result = prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000);
 	assert_eq!(result, Ok(()));
 	let paths = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
 
