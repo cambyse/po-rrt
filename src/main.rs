@@ -26,9 +26,9 @@ fn main() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	let result = prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000);
-	assert_eq!(result, Ok(()));
-	let _ = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000).unwrap();
+	prm.plan().unwrap();
+    prm.react(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
 
 	prm.print_summary();
 }

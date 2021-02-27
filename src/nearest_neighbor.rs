@@ -17,6 +17,10 @@ impl<const N: usize> KdTree<N> {
 		Self { root }
 	}
 
+	pub fn reset(&mut self, state: [f64; N]) {
+		self.root = KdNode { id: 0, state, left: None, right: None };
+	}
+
 	pub fn add(&mut self, state: [f64; N], id: usize) {
 		let mut current = &mut self.root;
 		for axis in (0..N).into_iter().cycle() {

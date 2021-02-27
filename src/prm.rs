@@ -80,6 +80,7 @@ pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	continuous_sampler: ContinuousSampler<N>,
 	discrete_sampler: DiscreteSampler,
 	fns: &'a F,
+	kdtree: KdTree<N>,
 	graph: PRMGraph<N>,
 	conservative_reachability: Reachability,
 	cost_to_goals: Vec<Vec<f64>>,
@@ -91,7 +92,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn new(continuous_sampler: ContinuousSampler<N>, discrete_sampler: DiscreteSampler, fns: &'a F) -> Self {
 		Self { continuous_sampler,
 			   discrete_sampler,
-			   fns, graph: PRMGraph{nodes: vec![]},
+			   fns, 
+			   kdtree: KdTree::new([0.0; N]),
+			   graph: PRMGraph{nodes: vec![]},
 			   conservative_reachability: Reachability::new(), 
 			   cost_to_goals: Vec::new(),
 			   n_worlds: 0, 
@@ -105,7 +108,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.n_worlds = root_validity.len();
 		self.graph.add_node(start, root_validity.clone());
 		self.conservative_reachability.set_root(root_validity);
-		let mut kdtree = KdTree::new(start);
+		self.kdtree.reset(start);
 
 		let mut i = 0;
 		while i < n_iter_min || !self.conservative_reachability.is_final_set_complete() && i < n_iter_max {
@@ -116,7 +119,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let world = self.discrete_sampler.sample(self.n_worlds);
 
 			// Second, retrieve closest node for sampled world and steer from there
-			let kd_from = kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // log n
+			let kd_from = self.kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // log n
 			steer(&kd_from.state, &mut new_state, max_step); 
 
 			if let Some(state_validity) = self.fns.state_validity(&new_state) {
@@ -133,7 +136,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				};
 
 				// Fifth we connect to neighbors 
-				let mut neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
+				let mut neighbour_ids: Vec<usize> = self.kdtree.nearest_neighbors(new_state, radius).iter()
 				.map(|&kd_node| kd_node.id)
 				.collect();
 
@@ -166,7 +169,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					self.conservative_reachability.add_final_node(new_node_id);
 				}
 
-				kdtree.add(new_state, new_node_id);
+				self.kdtree.add(new_state, new_node_id);
 			}
 		}
 
@@ -178,7 +181,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
-	pub fn plan(&mut self, _: &[f64; N], _: &Vec<f64>) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
+	pub fn plan(&mut self) -> Result<(), &'static str> {
 		// compute the cost to goals
 		self.cost_to_goals = vec![Vec::new(); self.n_worlds];
 		for world in 0..self.n_worlds {
@@ -189,9 +192,15 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			self.cost_to_goals[world] = dijkstra(&self.graph, &final_nodes, world, self.fns);
 		}
 
+		Ok(())
+	}
+
+	pub fn react(&mut self, start: &[f64; N], _belief_state: &Vec<f64>) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
+		let kd_start = self.kdtree.nearest_neighbor(*start);
+
 		let mut paths : Vec<Vec<[f64; N]>> = vec![Vec::new(); self.n_worlds];
 		for world in 0..self.n_worlds {
-			paths[world] = self.get_path(0, world).expect("path should be succesfully extracted at this stage, since each world has final nodes");
+			paths[world] = self.get_path(kd_start.id, world).expect("path should be succesfully extracted at this stage, since each world has final nodes");
 		}
 
 		Ok(paths)
@@ -245,9 +254,9 @@ fn test_plan_on_map() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	let result = prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000);
-	assert_eq!(result, Ok(()));
-	let paths = prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	prm.plan().unwrap();
+	let paths = prm.react(&[0.8, -0.2], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
 
 	prm.print_summary();
 	let mut full = m.clone();
@@ -275,7 +284,7 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 
 	assert_ne!(Ok(()), prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 300, 1000));
 
-	prm.plan(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25]).unwrap(); // panics
+	prm.plan().unwrap(); // panics
 }
 
 #[test]
