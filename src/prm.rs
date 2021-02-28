@@ -228,7 +228,7 @@ mod tests {
 use super::*;
 
 #[test]
-fn test_plan_on_map() {
+fn test_plan_on_map2() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm");
 

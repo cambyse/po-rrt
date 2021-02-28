@@ -55,9 +55,9 @@ impl Reachability {
 	}
 
 	pub fn final_nodes_for_world(&self, world: usize) -> Vec<usize> {
-		self.final_node_ids.iter()
-			.filter(|&id| self.reachability[*id][world])
-			.map(|&id| id)
+		self.final_node_ids.iter().enumerate()
+			.filter(|(i, &id)| self.reachability[id][world] && self.finality[*i][world])
+			.map(|(_, &id)| id)
 			.collect()
 	}
 
@@ -65,8 +65,7 @@ impl Reachability {
 		if self.final_node_ids.is_empty() { return false; }
 
 		// get first elements as starting point..
-		let mut finality = self.finality[0].clone();
-		dbg!(&finality);
+		let mut finality = bitvec![0; self.finality[0].len()];
 
 		for (&final_node_id, node_finality) in self.final_node_ids.iter().zip(self.finality.iter()) {
 			let node_reachability = &self.reachability[final_node_id];
@@ -174,7 +173,7 @@ fn test_final_nodes_completness() {
 }
 
 #[test]
-fn test_final_nodes_completness_when_different_goals_for_different_worlds() {
+fn test_final_nodes_completness_when_2_different_goals_for_2_different_worlds() {
 	/*
 		0
 		|
