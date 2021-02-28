@@ -6,6 +6,7 @@ use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use crate::prm_graph::*;
 use bitvec::prelude::*;
+use minilp::{ComparisonOp, OptimizationDirection, Problem, Variable};
 
 pub struct Reachability {
 	validity: Vec<WorldMask>,
@@ -195,20 +196,110 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		Ok(())
 	}
 
-	pub fn react(&mut self, start: &[f64; N], _belief_state: &Vec<f64>) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
+	pub fn react(&mut self, start: &[f64; N], belief_state: &Vec<f64>, common_horizon: f64) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
 		let kd_start = self.kdtree.nearest_neighbor(*start);
 
+		let (common_path, id) = self.get_common_path(kd_start.id, belief_state, common_horizon).unwrap();
 		let mut paths : Vec<Vec<[f64; N]>> = vec![Vec::new(); self.n_worlds];
 		for world in 0..self.n_worlds {
-			paths[world] = self.get_path(kd_start.id, world).expect("path should be succesfully extracted at this stage, since each world has final nodes");
+			paths[world] = common_path.clone();
+			paths[world].extend(self.get_path(id, world).expect("path should be succesfully extracted at this stage, since each world has final nodes"));
 		}
 
 		Ok(paths)
 	}
 
-	pub fn print_summary(&self) {
-		println!("number of iterations:{}", self.n_it);
-		self.graph.print_summary();
+	fn get_policy_graph(&self) -> Result<PRMGraph<N>, &'static str> {
+		let mut policy = self.graph.clone();
+
+		let get_world_validities = |id: usize| -> Vec<bool> {
+			(0..self.n_worlds).into_iter()
+				.map(|world|{self.cost_to_goals[world][id].is_finite()})
+				.collect()
+		};
+
+		for (from_id, node) in self.graph.nodes.iter().enumerate() {
+			for &to_id in &node.children {
+				let world_validities = get_world_validities(to_id);
+
+				// keep to if there is belief in which it would be the right decision: bs * cost(to) < bs * cost (other)
+				// => this means solving an LP
+
+				let mut problem = Problem::new(OptimizationDirection::Minimize);
+				let mut belief: Vec<minilp::Variable> = Vec::new();
+				
+				// add variables, and force belief to 0 in infeasible worlds
+				for world in 0..self.n_worlds {
+					if world_validities[world] {
+						belief.push(problem.add_var(1.0, (0.0, 1.0)));
+					}
+					else {
+						belief.push(problem.add_var(1.0, (0.0, 0.0)));
+					}
+				} 
+
+				// normalization constraint
+				let eq_constraint : Vec<(Variable, f64)> = belief.iter().map(|w|{(*w, 1.0)}).collect();
+				problem.add_constraint(&eq_constraint, ComparisonOp::Eq, 1.0);
+
+				// improvment constraint
+				for &other_id in &node.children {
+					if other_id != to_id {
+						let mut improvment_constraint : Vec<(Variable, f64)> = Vec::new();
+
+						for world in 0..self.n_worlds {
+							if world_validities[world] && self.cost_to_goals[world][other_id].is_finite() {
+								improvment_constraint.push((belief[world], self.cost_to_goals[world][to_id] - self.cost_to_goals[world][other_id]));
+							}
+						}
+
+						problem.add_constraint(&improvment_constraint, ComparisonOp::Le, 0.0);
+					}
+				}
+
+				let solution = problem.solve();
+
+				match solution {
+					Ok(_) => {},
+					Err(_) => policy.remove_edge(from_id, to_id)
+				}
+			}
+		}
+
+		Ok(policy)
+	}
+
+	fn get_common_path(&self, start_id:usize, belief_state: &Vec<f64>, common_horizon: f64) -> Result<(Vec<[f64; N]>, usize), &'static str> {
+		let mut path: Vec<[f64; N]> = Vec::new();
+
+		let mut id = start_id;
+		let mut accumulated_horizon = 0.0;
+		let mut smallest_expected_cost = std::f64::INFINITY;
+
+		while smallest_expected_cost > 0.0 && accumulated_horizon < common_horizon {
+			let node = &self.graph.nodes[id]; 
+			path.push(node.state);
+
+			let mut best_child_id = 0;
+			smallest_expected_cost = std::f64::INFINITY;
+
+			for child_id in &node.children {
+				let mut child_expected_cost = 0.0;
+				for world in 0..self.n_worlds {
+					child_expected_cost += self.cost_to_goals[world][*child_id] * belief_state[world];
+				}
+
+				if child_expected_cost < smallest_expected_cost {
+					best_child_id = *child_id;
+					smallest_expected_cost = child_expected_cost;
+				}
+			}
+
+			accumulated_horizon += norm2(&self.graph.nodes[id].state, &self.graph.nodes[best_child_id].state); // TODO: replace by injected function?
+			id = best_child_id;
+		}
+		
+		Ok((path, id))
 	}
 
 	fn get_path(&self, start_id:usize, world: usize) -> Result<Vec<[f64; N]>, &'static str> {
@@ -234,6 +325,12 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		Ok(path)
 	}
+
+	pub fn print_summary(&self) {
+		println!("number of iterations:{}", self.n_it);
+		self.graph.print_summary();
+	}
+
 }
 
 #[cfg(test)]
@@ -247,21 +344,24 @@ fn test_plan_on_map() {
 	m.add_zones("data/map2_zone_ids.pgm");
 
 	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+		(state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.plan().unwrap();
-	let paths = prm.react(&[0.8, -0.2], &vec![0.25, 0.25, 0.25, 0.25]).unwrap();
+	let paths = prm.react(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25], 0.2).unwrap();
 
 	prm.print_summary();
 	let mut full = m.clone();
 	full.resize(5);
-	full.draw_full_graph(&prm.graph);
+//	full.draw_full_graph(&prm.graph);
+	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
+//	full.draw_graph_for_world(&prm.graph, 0);
+
 	for path in paths {
 		full.draw_path(path);
 	}

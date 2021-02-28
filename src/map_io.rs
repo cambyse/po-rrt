@@ -223,11 +223,19 @@ impl Map {
 		}
 	}
 
+	pub fn draw_graph_from_root(&mut self, graph: &PRMGraph<2>) {
+		self.draw_graph_from_root_impl(graph, &|_|{true})
+	}
+
 	pub fn draw_graph_for_world(&mut self, graph: &PRMGraph<2>, world:usize) {
 		if world > self.n_worlds {
 			panic!("Invalid world id");
 		}
 
+		self.draw_graph_from_root_impl(graph, &|node|{node.validity[world]})
+	}
+
+	pub fn draw_graph_from_root_impl(&mut self, graph: &PRMGraph<2>, validator: &dyn Fn(&PRMNode<2>) -> bool) {
 		let mut visited = HashSet::new();
 		let mut queue: Queue<usize> = queue![];
 		visited.insert(0);
@@ -240,8 +248,8 @@ impl Map {
 			for &to_id in &from.children {
 				let to = &graph.nodes[to_id];
 
-				if to.validity[world] {
-					self.draw_line(from.state, to.state, 100);
+				if validator(to) {
+					self.draw_line(from.state, to.state, 150);
 
 					if !visited.contains(&to_id) {
 						queue.add(to_id).expect("Overflow");

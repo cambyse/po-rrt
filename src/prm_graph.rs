@@ -95,6 +95,7 @@ pub trait PRMFuncs<const N: usize> {
 	}
 }
 
+#[derive(Clone)]
 pub struct PRMNode<const N: usize> {
 	pub state: [f64; N],
 	pub validity: WorldMask,
@@ -102,6 +103,7 @@ pub struct PRMNode<const N: usize> {
 	pub children: Vec<usize>,
 }
 
+#[derive(Clone)]
 pub struct PRMGraph<const N: usize> {
 	pub nodes: Vec<PRMNode<N>>,
 }
@@ -117,6 +119,11 @@ impl<const N: usize> PRMGraph<N> {
 	pub fn add_edge(&mut self, from_id: usize, to_id: usize) {
 		self.nodes[from_id].children.push(to_id);
 		self.nodes[to_id].parents.push(from_id);
+	}
+
+	pub fn remove_edge(&mut self, from_id: usize, to_id: usize) {
+		self.nodes[from_id].children.retain(|&id|{id != to_id});
+		self.nodes[to_id].parents.retain(|&id|{id != from_id});
 	}
 
 	pub fn get_path_to(&self, _: usize) -> Vec<[f64; N]> {
