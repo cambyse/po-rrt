@@ -1,6 +1,6 @@
 use itertools::{all, enumerate, izip, merge, zip};
 
-use crate::{common::*, prm::Reachability};
+use crate::{common::*};
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;

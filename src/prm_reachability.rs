@@ -1,18 +1,18 @@
 use itertools::{all, enumerate, izip, merge, zip};
 
 use crate::common::*;
-use crate::prm_graph::*;
 use bitvec::prelude::*;
 
 pub struct Reachability {
 	validity: Vec<WorldMask>,
 	reachability: Vec<WorldMask>,
-	final_node_ids: Vec<usize>
+	final_node_ids: Vec<usize>,
+	finality: Vec<WorldMask>
 }
 
 impl Reachability {
 	pub fn new() -> Self {
-		Self{ validity: Vec::new(), reachability: Vec::new(), final_node_ids: Vec::new() }
+		Self{ validity: Vec::new(), reachability: Vec::new(), final_node_ids: Vec::new(), finality: Vec::new() }
 	}
 
 	pub fn set_root(&mut self, validity: WorldMask) {
@@ -25,8 +25,9 @@ impl Reachability {
 		self.reachability.push(bitvec![0; validity.len()]);
 	}
 
-	pub fn add_final_node(&mut self, id: usize) {
+	pub fn add_final_node(&mut self, id: usize, finality: WorldMask) {
 		self.final_node_ids.push(id);
+		self.finality.push(finality);
 	}
 
 	pub fn add_edge(&mut self, from: usize, to: usize) {
@@ -40,7 +41,7 @@ impl Reachability {
 		.map(|(r_from, r_to, v_to)| *r_to || (*r_from && *v_to) )
 		.collect();*/
 
-		// this version appears to be the fastest
+		// this version appears to be the fastest, see cargo bench
 		for i in 0..self.reachability[to].len() {
 			let r_to = self.reachability[to][i];
 			let r_from = self.reachability[from][i];
@@ -64,12 +65,21 @@ impl Reachability {
 		if self.final_node_ids.is_empty() { return false; }
 
 		// get first elements as starting point..
-		let &first_final_id = self.final_node_ids.first().unwrap();
-		let first_reachability = self.reachability[first_final_id].clone();
+		let mut finality = self.finality[0].clone();
+		dbg!(&finality);
 
-		self.final_node_ids.iter().skip(0)
-			.fold(first_reachability, |reachability, &id| reachability | self.reachability[id].clone())
-			.all()
+		for (&final_node_id, node_finality) in self.final_node_ids.iter().zip(self.finality.iter()) {
+			let node_reachability = &self.reachability[final_node_id];
+			for i in 0..node_reachability.len() {
+				let &finality_i = &finality[i];
+				finality.set(i, finality_i || node_reachability[i] && node_finality[i]);
+			}
+		}
+		/*self.final_node_ids.iter().skip(0)
+			.fold(first_finality, |finality, &id| finality | (self.reachability[id].clone() ) )
+			.all()*/
+
+		finality.all()
 	}
 }
 
@@ -153,10 +163,40 @@ fn test_final_nodes_completness() {
 
 	assert_eq!(reachability.is_final_set_complete(), false);
 
-	reachability.add_final_node(2);
+	reachability.add_final_node(2, bitvec![1,1]);
 	assert_eq!(reachability.is_final_set_complete(), false);
 
-	reachability.add_final_node(3);
+	reachability.add_final_node(3, bitvec![1,1]);
+	assert_eq!(reachability.is_final_set_complete(), true);
+
+	assert_eq!(reachability.final_nodes_for_world(0), vec![2]);
+	assert_eq!(reachability.final_nodes_for_world(1), vec![3]);
+}
+
+#[test]
+fn test_final_nodes_completness_when_different_goals_for_different_worlds() {
+	/*
+		0
+		|
+		1
+	   / \
+	  2   3
+	*/
+	let mut reachability = Reachability::new();
+
+	reachability.set_root(bitvec![1,1]); // 0
+	reachability.add_node(bitvec![1,1]); // 1
+	reachability.add_node(bitvec![1,1]); // 2
+	reachability.add_node(bitvec![1,1]); // 3
+
+	reachability.add_edge(0, 1);
+	reachability.add_edge(1, 2);
+	reachability.add_edge(1, 3);
+
+	reachability.add_final_node(2, bitvec![1,0]);
+	assert_eq!(reachability.is_final_set_complete(), false);
+
+	reachability.add_final_node(3, bitvec![0,1]);
 	assert_eq!(reachability.is_final_set_complete(), true);
 
 	assert_eq!(reachability.final_nodes_for_world(0), vec![2]);
