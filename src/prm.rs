@@ -33,7 +33,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   n_it: 0 }
 	}
 
-	pub fn grow_graph(&mut self, &start: &[f64; N], goal: fn(&[f64; N]) -> bool,
+	pub fn grow_graph(&mut self, &start: &[f64; N], goal: fn(&[f64; N]) -> WorldMask,
 				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<(), &'static str> {
 
 		let root_validity = self.fns.state_validity(&start).expect("Start from a valid state!");
@@ -97,8 +97,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					self.conservative_reachability.add_edge(new_node_id, id);
 				}
 					
-				if goal(&new_state) {
-					self.conservative_reachability.add_final_node(new_node_id, state_validity);
+				let finality = goal(&new_state);
+				if finality.iter().any(|w|{*w}) {
+					self.conservative_reachability.add_final_node(new_node_id, finality);
 				}
 
 				self.kdtree.add(new_state, new_node_id);
@@ -232,8 +233,8 @@ fn test_plan_on_map2() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm");
 
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
 	}
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
@@ -241,10 +242,10 @@ fn test_plan_on_map2() {
 						   &m);
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.plan().unwrap();
-	let paths = prm.react(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25], 0.2).unwrap();
-
+	prm.plan().expect("general solution couldn't be found");
+	let paths = prm.react(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25], 0.2).expect("impossible to extract policy");
 	prm.print_summary();
+
 	let mut full = m.clone();
 	full.resize(5);
 //	full.draw_full_graph(&prm.graph);
@@ -254,7 +255,40 @@ fn test_plan_on_map2() {
 	for path in paths {
 		full.draw_path(path);
 	}
-	full.save("results/test_prm_graph.pgm");
+	full.save("results/test_plan_on_map2.pgm");
+}
+
+#[test]
+fn test_plan_on_map1_2_goals() {
+	let mut m = Map::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map1_2_goals_zone_ids.pgm");
+
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		let mut finality = bitvec![0;2];
+		finality.set(0, (state[0] - 0.68).abs() < 0.05 && (state[1] + 0.45).abs() < 0.05);
+		finality.set(1, (state[0] - 0.68).abs() < 0.05 && (state[1] - 0.38).abs() < 0.05);
+		finality
+	}
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSampler::new(),
+						   &m);
+
+	prm.grow_graph(&[-0.8, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.plan().expect("general solution couldn't be found");
+	let paths = prm.react(&[-0.8, -0.8], &vec![0.0, 1.0], 0.2).expect("impossible to extract policy");
+	prm.print_summary();
+
+	let mut full = m.clone();
+	full.resize(5);
+//	full.draw_full_graph(&prm.graph);
+	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
+//	full.draw_graph_for_world(&prm.graph, 0);
+
+	for path in paths {
+		full.draw_path(path);
+	}
+	full.save("results/test_plan_on_map1_2_goals.pgm");
 }
 
 #[test]
@@ -263,8 +297,8 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm");
 
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
 	}
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
