@@ -6,7 +6,6 @@ use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use crate::prm_graph::*;
 use bitvec::prelude::*;
-use minilp::{ComparisonOp, OptimizationDirection, Problem, Variable};
 
 pub struct Reachability {
 	validity: Vec<WorldMask>,
@@ -210,93 +209,28 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	fn get_policy_graph(&self) -> Result<PRMGraph<N>, &'static str> {
-		let mut policy = self.graph.clone();
-
-		let get_world_validities = |id: usize| -> Vec<bool> {
-			(0..self.n_worlds).into_iter()
-				.map(|world|{self.cost_to_goals[world][id].is_finite()})
-				.collect()
-		};
-
-		for (from_id, node) in self.graph.nodes.iter().enumerate() {
-			for &to_id in &node.children {
-				let world_validities = get_world_validities(to_id);
-
-				// keep to if there is belief in which it would be the right decision: bs * cost(to) < bs * cost (other)
-				// => this means solving an LP
-
-				let mut problem = Problem::new(OptimizationDirection::Minimize);
-				let mut belief: Vec<minilp::Variable> = Vec::new();
-				
-				// add variables, and force belief to 0 in infeasible worlds
-				for world in 0..self.n_worlds {
-					if world_validities[world] {
-						belief.push(problem.add_var(1.0, (0.0, 1.0)));
-					}
-					else {
-						belief.push(problem.add_var(1.0, (0.0, 0.0)));
-					}
-				} 
-
-				// normalization constraint
-				let eq_constraint : Vec<(Variable, f64)> = belief.iter().map(|w|{(*w, 1.0)}).collect();
-				problem.add_constraint(&eq_constraint, ComparisonOp::Eq, 1.0);
-
-				// improvment constraint
-				for &other_id in &node.children {
-					if other_id != to_id {
-						let mut improvment_constraint : Vec<(Variable, f64)> = Vec::new();
-
-						for world in 0..self.n_worlds {
-							if world_validities[world] && self.cost_to_goals[world][other_id].is_finite() {
-								improvment_constraint.push((belief[world], self.cost_to_goals[world][to_id] - self.cost_to_goals[world][other_id]));
-							}
-						}
-
-						problem.add_constraint(&improvment_constraint, ComparisonOp::Le, 0.0);
-					}
-				}
-
-				let solution = problem.solve();
-
-				match solution {
-					Ok(_) => {},
-					Err(_) => policy.remove_edge(from_id, to_id)
-				}
-			}
-		}
-
-		Ok(policy)
+		get_policy_graph(&self.graph, &self.cost_to_goals)
 	}
 
 	fn get_common_path(&self, start_id:usize, belief_state: &Vec<f64>, common_horizon: f64) -> Result<(Vec<[f64; N]>, usize), &'static str> {
+		if belief_state.len() != self.n_worlds {
+			return Err("belief state size should match the number of worlds")
+		}
+
 		let mut path: Vec<[f64; N]> = Vec::new();
 
 		let mut id = start_id;
-		let mut accumulated_horizon = 0.0;
 		let mut smallest_expected_cost = std::f64::INFINITY;
+		let mut accumulated_horizon = 0.0;
 
-		while smallest_expected_cost > 0.0 && accumulated_horizon < common_horizon {
-			let node = &self.graph.nodes[id]; 
-			path.push(node.state);
+		while accumulated_horizon < common_horizon && smallest_expected_cost > 0.0 {
+			path.push(self.graph.nodes[id].state);
 
-			let mut best_child_id = 0;
-			smallest_expected_cost = std::f64::INFINITY;
+			let id_cost = self.get_best_expected_child(id, belief_state);
+			accumulated_horizon += norm2(&self.graph.nodes[id].state, &self.graph.nodes[id_cost.0].state); // TODO: replace by injected function?
 
-			for child_id in &node.children {
-				let mut child_expected_cost = 0.0;
-				for world in 0..self.n_worlds {
-					child_expected_cost += self.cost_to_goals[world][*child_id] * belief_state[world];
-				}
-
-				if child_expected_cost < smallest_expected_cost {
-					best_child_id = *child_id;
-					smallest_expected_cost = child_expected_cost;
-				}
-			}
-
-			accumulated_horizon += norm2(&self.graph.nodes[id].state, &self.graph.nodes[best_child_id].state); // TODO: replace by injected function?
-			id = best_child_id;
+			id = id_cost.0;
+			smallest_expected_cost = id_cost.1;
 		}
 		
 		Ok((path, id))
@@ -307,20 +241,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		let mut id = start_id;
 		while self.cost_to_goals[world][id] > 0.0 {
-			let node = &self.graph.nodes[id]; 
-			path.push(node.state);
+			path.push(self.graph.nodes[id].state);
 
-			let mut best_child_id = 0;
-			let mut smaller_cost = std::f64::INFINITY;
-
-			for child_id in &node.children {
-				if self.cost_to_goals[world][*child_id] < smaller_cost {
-					smaller_cost = self.cost_to_goals[world][*child_id];
-					best_child_id = *child_id;
-				}
-			}
-
-			id = best_child_id;
+			id = self.get_best_child(id, world);
 		}
 
 		Ok(path)
@@ -329,6 +252,40 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn print_summary(&self) {
 		println!("number of iterations:{}", self.n_it);
 		self.graph.print_summary();
+	}
+
+	fn get_best_expected_child(&self, node_id: usize, belief_state: &Vec<f64>) -> (usize, f64) {
+		let node = &self.graph.nodes[node_id]; 
+		let mut best_child_id = 0;
+		let mut smallest_expected_cost = std::f64::INFINITY;
+
+		for child_id in &node.children {
+			let mut child_expected_cost = 0.0;
+			for world in 0..self.n_worlds {
+				child_expected_cost += self.cost_to_goals[world][*child_id] * belief_state[world];
+			}
+
+			if child_expected_cost < smallest_expected_cost {
+				best_child_id = *child_id;
+				smallest_expected_cost = child_expected_cost;
+			}
+		}
+		(best_child_id, smallest_expected_cost)
+	}
+
+	fn get_best_child(&self, node_id: usize, world: usize) -> usize {
+		let node = &self.graph.nodes[node_id]; 
+		let mut best_child_id = 0;
+		let mut smaller_cost = std::f64::INFINITY;
+
+		for child_id in &node.children {
+			if self.cost_to_goals[world][*child_id] < smaller_cost {
+				smaller_cost = self.cost_to_goals[world][*child_id];
+				best_child_id = *child_id;
+			}
+		}
+
+		best_child_id
 	}
 
 }
@@ -359,7 +316,7 @@ fn test_plan_on_map() {
 	let mut full = m.clone();
 	full.resize(5);
 //	full.draw_full_graph(&prm.graph);
-	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
+//	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
 //	full.draw_graph_for_world(&prm.graph, 0);
 
 	for path in paths {
@@ -512,9 +469,9 @@ fn test_final_nodes_completness() {
 // - error flow
 // - add transition check
 // - resize map
-// TODO:
-// - avoid copies
 // - extract common path
 // - plan from random point
+// TODO:
+// - avoid copies
 // - optimize nearest neighbor (avoid sqrt)
 // - multithread dijkstra

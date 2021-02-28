@@ -15,6 +15,7 @@ use serde::{Serialize, Deserialize};
 
 use priority_queue::PriorityQueue;
 use bitvec::prelude::*;
+use minilp::{ComparisonOp, OptimizationDirection, Problem, Variable};
 
 /***************************IO*****************************/
 
@@ -206,6 +207,67 @@ pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMGraph<N>, final_n
 	}
 
 	dist
+}
+
+/***********************Policy Extraction***********************/
+
+pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &Vec<Vec<f64>>) -> Result<PRMGraph<N>, &'static str> {
+	let mut policy = graph.clone();
+	let n_worlds = cost_to_goals.len();
+
+	let get_world_validities = |id: usize| -> Vec<bool> {
+		(0..n_worlds).into_iter()
+			.map(|world|{cost_to_goals[world][id].is_finite()})
+			.collect()
+	};
+
+	for (from_id, node) in graph.nodes.iter().enumerate() {
+		for &to_id in &node.children {
+			let world_validities = get_world_validities(to_id);
+
+			// keep to if there is belief in which it would be the right decision: bs * cost(to) < bs * cost (other)
+			// => this means solving an LP
+
+			let mut problem = Problem::new(OptimizationDirection::Minimize);
+			let mut belief: Vec<minilp::Variable> = Vec::new();
+			
+			// add variables, and force belief to 0 in infeasible worlds
+			for world in 0..n_worlds {
+				if world_validities[world] {
+					belief.push(problem.add_var(1.0, (0.0, 1.0)));
+				}
+				else {
+					belief.push(problem.add_var(1.0, (0.0, 0.0)));
+				}
+			} 
+
+			// normalization constraint
+			let eq_constraint : Vec<(Variable, f64)> = belief.iter().map(|w|{(*w, 1.0)}).collect();
+			problem.add_constraint(&eq_constraint, ComparisonOp::Eq, 1.0);
+
+			// improvment constraint
+			for &other_id in &node.children {
+				if other_id != to_id {
+					let mut improvment_constraint : Vec<(Variable, f64)> = Vec::new();
+
+					for world in 0..n_worlds {
+						if world_validities[world] && cost_to_goals[world][other_id].is_finite() {
+							improvment_constraint.push((belief[world], cost_to_goals[world][to_id] - cost_to_goals[world][other_id]));
+						}
+					}
+
+					problem.add_constraint(&improvment_constraint, ComparisonOp::Le, 0.0);
+				}
+			}
+
+			match problem.solve() {
+				Ok(_) => {},
+				Err(_) => policy.remove_edge(from_id, to_id)
+			}
+		}
+	}
+
+	Ok(policy)
 }
 
 /****************************Tests******************************/
