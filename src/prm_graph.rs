@@ -356,12 +356,116 @@ fn create_oriented_grid_graph() -> PRMGraph<2> {
 	graph
 }
 
+fn create_diamond_graph() -> PRMGraph<2> {
+	/*
+	  1
+	 / \
+	0---3
+	 \ /
+	  2
+	*/
+	let mut graph = PRMGraph{nodes: Vec::new()};
+
+	// nodes
+	graph.add_node([0.0, 0.0], bitvec![1]);   // 0
+	graph.add_node([1.0, 1.0], bitvec![1]);   // 1
+
+	graph.add_node([1.0, -1.0], bitvec![1]);  // 2
+	graph.add_node([2.0, 0.0], bitvec![1]);   // 3
+
+	// edges
+	graph.add_edge(0, 1); 	graph.add_edge(1, 0);
+	graph.add_edge(0, 3); 	graph.add_edge(3, 0);
+	graph.add_edge(0, 2); 	graph.add_edge(2, 0);
+	graph.add_edge(1, 3); 	graph.add_edge(3, 1);
+	graph.add_edge(2, 3); 	graph.add_edge(3, 2);
+
+	graph
+}
+
+fn create_diamond_graph_2_worlds() -> PRMGraph<2> {
+	/*
+	  1
+	 / \
+	0   3
+	 \ /
+	  2
+	*/
+	// 1 valid in world 0, 2 valid in world 1
+	let mut graph = PRMGraph{nodes: Vec::new()};
+
+	// nodes
+	graph.add_node([0.0, 0.0], bitvec![1, 1]);   // 0
+	graph.add_node([1.0, 1.0], bitvec![1, 0]);   // 1
+
+	graph.add_node([1.0, -1.0], bitvec![0, 1]);  // 2
+	graph.add_node([2.0, 0.0], bitvec![1, 1]);   // 3
+
+	// edges
+	graph.add_edge(0, 1); 	graph.add_edge(1, 0);
+	graph.add_edge(0, 2); 	graph.add_edge(2, 0);
+	graph.add_edge(1, 3); 	graph.add_edge(3, 1);
+	graph.add_edge(2, 3); 	graph.add_edge(3, 2);
+
+	graph
+}
+
 #[test]
 fn test_graph_serialization() {
 	let graph = create_minimal_graph();
 
 	save(&graph, "results/test_graph_serialization.json");
 	let _ = load("results/test_graph_serialization.json");
+}
+
+#[test]
+fn test_policy_extraction_on_diamond_graph() {
+	let graph = create_diamond_graph();
+
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+	let dists = dijkstra(&graph, &vec![3], 0, &Funcs{});
+
+	let policy = get_policy_graph(&graph, &vec![dists]).unwrap();
+
+	// pruning happend, only one edge should remain
+	assert_eq!(policy.nodes[0].children, vec![3]);
+	assert_eq!(policy.nodes[1].children, vec![3]);
+	assert_eq!(policy.nodes[2].children, vec![3]);
+}
+
+#[test]
+fn test_policy_extraction_on_diamond_graph_2_worlds() {
+	let graph = create_diamond_graph_2_worlds();
+
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+	let dists_w0 = dijkstra(&graph, &vec![3], 0, &Funcs{});
+	let dists_w1 = dijkstra(&graph, &vec![3], 1, &Funcs{});
+
+	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
+
+	// pruning of reversed edges happended, but 1 and 2 still reachable because we need them to be complete in each world
+	assert_eq!(policy.nodes[3].children, vec![1, 2]);
+	assert_eq!(policy.nodes[1].children, vec![3]);
+	assert_eq!(policy.nodes[2].children, vec![3]);
+}
+
+#[test]
+fn test_policy_extraction_on_grid_with_2_different_goals() {
+	let graph = create_grid_graph();
+
+	struct Funcs {}
+	impl PRMFuncs<2> for Funcs {}
+	let dists_w0 = dijkstra(&graph, &vec![2], 0, &Funcs{});
+	let dists_w1 = dijkstra(&graph, &vec![5], 0, &Funcs{});
+
+	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
+
+	// prune non advantageous part of the grid
+	assert_eq!(policy.nodes[3].children, vec![0, 4]);
+	assert_eq!(policy.nodes[4].children, vec![1, 5]);
+	assert_eq!(policy.nodes[8].children, vec![5]);
 }
 
 #[test]
