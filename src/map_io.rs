@@ -249,7 +249,7 @@ impl Map {
 				let to = &graph.nodes[to_id];
 
 				if validator(to) {
-					self.draw_line(from.state, to.state, 150);
+					self.draw_line(from.state, to.state, 200);
 
 					if !visited.contains(&to_id) {
 						queue.add(to_id).expect("Overflow");

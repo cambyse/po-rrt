@@ -243,19 +243,49 @@ fn test_plan_on_map2() {
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.plan().expect("general solution couldn't be found");
-	let paths = prm.react(&[0.55, -0.8], &vec![0.25, 0.25, 0.25, 0.25], 0.2).expect("impossible to extract policy");
+	let paths = prm.react(&[0.55, -0.6], &vec![1.0/4.0; 4], 0.2).expect("impossible to extract policy");
 	prm.print_summary();
 
 	let mut full = m.clone();
 	full.resize(5);
-//	full.draw_full_graph(&prm.graph);
-	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
+	full.draw_full_graph(&prm.graph);
+//	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
 //	full.draw_graph_for_world(&prm.graph, 0);
 
 	for path in paths {
 		full.draw_path(path);
 	}
 	full.save("results/test_plan_on_map2.pgm");
+}
+
+#[test]
+fn test_plan_on_map4() {
+	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map4_zone_ids.pgm");
+
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
+	}
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSampler::new(),
+						   &m);
+
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.plan().expect("general solution couldn't be found");
+	let paths = prm.react(&[0.55, -0.6], &vec![1.0/16.0; 16], 0.2).expect("impossible to extract policy");
+	prm.print_summary();
+
+	let mut full = m.clone();
+	full.resize(5);
+	full.draw_full_graph(&prm.graph);
+//	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
+//	full.draw_graph_for_world(&prm.graph, 0);
+
+	for path in paths {
+		full.draw_path(path);
+	}
+	full.save("results/test_plan_on_map4.pgm");
 }
 
 #[test]
@@ -276,13 +306,13 @@ fn test_plan_on_map1_2_goals() {
 
 	prm.grow_graph(&[-0.8, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.plan().expect("general solution couldn't be found");
-	let paths = prm.react(&[-0.8, -0.8], &vec![0.0, 1.0], 0.2).expect("impossible to extract policy");
+	let paths = prm.react(&[-0.8, -0.8], &vec![0.5, 0.5], 0.2).expect("impossible to extract policy");
 	prm.print_summary();
 
 	let mut full = m.clone();
 	full.resize(5);
-//	full.draw_full_graph(&prm.graph);
-	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
+	full.draw_full_graph(&prm.graph);
+//	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
 //	full.draw_graph_for_world(&prm.graph, 0);
 
 	for path in paths {

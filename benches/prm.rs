@@ -1,20 +1,23 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use po_rrt::common::*;
 use po_rrt::prm::*;
 use po_rrt::sample_space::*;
 use po_rrt::map_io::*;
+use bitvec::prelude::*;
+
 
 fn prm_map(m: &Map, min_iter: usize) {
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
 	}
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   m);
-
+	//bitvec![]
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, min_iter, 100000).unwrap();
 	prm.plan().unwrap();
-	prm.react(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25], 0.1).unwrap();
+	prm.react(&[0.0, -0.8], &vec![0.25; 4], 0.1).unwrap();
 }
 
 
