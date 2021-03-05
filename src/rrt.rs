@@ -260,7 +260,7 @@ fn test_plan_empty_space() {
 #[test]
 fn test_plan_on_map() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm");
+	m.add_zones("data/map2_zone_ids.pgm", 0.1);
 
 	fn goal(state: &[f64; 2]) -> bool {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05

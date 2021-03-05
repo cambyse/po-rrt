@@ -28,7 +28,8 @@ pub struct Map
 	n_zones: usize,
 	n_worlds: usize,
 	zones_to_worlds: Vec<WorldMask>,
-	zone_positions: Vec<[f64;2]>
+	zone_positions: Vec<[f64;2]>,
+	visibility_distance: f64
 }
 
 // Given N zones, there are 2^N possible worlds
@@ -44,7 +45,7 @@ impl Map {
 	fn build(img: image::GrayImage, low: [f64; 2], up: [f64; 2])-> Map {
 		let ppm = (img.width() as f64) / (up[0] - low[0]);
 
-		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new(), zone_positions: Vec::new()}
+		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new(), zone_positions: Vec::new(), visibility_distance: 0.0}
 	}
 
 
@@ -58,11 +59,12 @@ impl Map {
 	}
 
 	// zones specific
-	pub fn add_zones(&mut self, filepath : &str) {
+	pub fn add_zones(&mut self, filepath : &str, visibility_distance: f64) {
 		self.zones = Some(Self::open_image(filepath));
 
 		self.init_zone_ids();
 		self.init_zone_positions();
+		self.visibility_distance = visibility_distance;
 
 		// zone -> worlds
 		for i in 0..self.n_zones {
@@ -343,8 +345,42 @@ impl PRMFuncs<2> for Map {
 		symbolic_validity && geometric_validitiy
 	}
 
-	fn observe(&self, _state: &[f64; 2], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
-		vec![belief_state.clone()]
+	fn observe(&self, state: &[f64; 2], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
+		let mut output_beliefs: Vec<Vec<f64>> = Vec::new();
+
+		fn normalize(belief: &mut Vec<f64>) {
+			let sum = belief.iter().fold(0.0, |sum, p| sum + p );
+
+			for p in belief {
+				*p = *p / sum;
+			}
+		}
+
+		for zone_id in 0..self.n_zones {
+			if norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
+				if output_beliefs.len() > 0 { panic!("zone overlap not yet supported"); }
+
+				let mask = &self.zones_to_worlds[zone_id];
+
+				// assum closed
+				let mut belief_close = belief_state.clone();
+				for w in 0..mask.len() {
+					belief_close[w] = if mask[w] { 0.0 } else { belief_state[w] };
+				}
+				normalize(&mut belief_close);
+				output_beliefs.push(belief_close);
+
+				// assume open
+				let mut belief_open = belief_state.clone();
+				for w in 0..mask.len() {
+					belief_open[w] = if mask[w] { belief_state[w] } else { 0.0 };
+				}
+				normalize(&mut belief_open);
+				output_beliefs.push(belief_open);
+			}
+		}
+
+		output_beliefs
 	}
 }
 
@@ -406,7 +442,7 @@ fn clone_draw_line_and_save_image() {
 #[test]
 fn test_map_1_construction() {
 	let mut map = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map1_zone_ids.pgm");
+	map.add_zones("data/map1_zone_ids.pgm", 0.1);
 
 	assert_eq!(map.n_zones, 1);
 	assert_eq!(map.n_worlds, 2);
@@ -415,7 +451,7 @@ fn test_map_1_construction() {
 #[test]
 fn test_map_1_states() {
 	let mut map = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map1_zone_ids.pgm");
+	map.add_zones("data/map1_zone_ids.pgm", 0.1);
 
 	// zone status
 	assert_eq!(map.get_zone_status(0, 0).unwrap(), false);// world 0 corresponds to all variations invalid
@@ -434,7 +470,7 @@ fn test_map_1_states() {
 #[test]
 fn test_map_2_construction() {
 	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm");
+	map.add_zones("data/map2_zone_ids.pgm", 0.1);
 
 	assert_eq!(map.n_zones,2);
 	assert_eq!(map.n_worlds, 4);
@@ -443,7 +479,7 @@ fn test_map_2_construction() {
 #[test]
 fn test_map_2_states() {
 	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm");
+	map.add_zones("data/map2_zone_ids.pgm", 0.1);
 
 	// world validity
 	assert_eq!(map.state_validity(&[0.1, 0.12]), None); // obstacle
@@ -453,11 +489,22 @@ fn test_map_2_states() {
 	assert_eq!(map.state_validity(&[0.57, 0.09]).unwrap(), bitvec![0,0,1,1]); // zone 1
 }
 
+#[test]
+fn test_map_2_observation_model() {
+	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+
+	// belief state transitions
+	let posteriors = map.observe(&[0.54, -0.5], &vec![0.25; 4]);
+	assert_eq!(posteriors[0], vec![0.5, 0.0, 0.5, 0.0]); // zone 0 close
+	assert_eq!(posteriors[1], vec![0.0, 0.5, 0.0, 0.5]); // zone 0 open
+}
+
 // MAP 4 zones
 #[test]
 fn test_map_4_construction() {
 	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map4_zone_ids.pgm");
+	map.add_zones("data/map4_zone_ids.pgm", 0.1);
 
 	assert_eq!(map.n_zones, 4);
 	assert_eq!(map.n_worlds, 16);
@@ -466,7 +513,7 @@ fn test_map_4_construction() {
 #[test]
 fn test_map_4_states() {
 	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map4_zone_ids.pgm");
+	map.add_zones("data/map4_zone_ids.pgm", 0.1);
 
 	// door validity
 	assert_eq!(map.is_state_valid_2(&[0.0, 0.0]), Belief::Free);

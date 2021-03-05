@@ -235,7 +235,7 @@ use super::*;
 #[test]
 fn test_plan_on_map2() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm");
+	m.add_zones("data/map2_zone_ids.pgm", 0.1);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
@@ -265,7 +265,7 @@ fn test_plan_on_map2() {
 #[test]
 fn test_plan_on_map4() {
 	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map4_zone_ids.pgm");
+	m.add_zones("data/map4_zone_ids.pgm", 0.1);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
@@ -295,7 +295,7 @@ fn test_plan_on_map4() {
 #[test]
 fn test_plan_on_map1_2_goals() {
 	let mut m = Map::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map1_2_goals_zone_ids.pgm");
+	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		let mut finality = bitvec![0;2];
@@ -329,7 +329,7 @@ fn test_plan_on_map1_2_goals() {
 #[should_panic]
 fn test_when_grow_graph_doesnt_reach_goal() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm");
+	m.add_zones("data/map2_zone_ids.pgm", 0.1);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
