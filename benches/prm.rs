@@ -23,7 +23,7 @@ fn prm_map(m: &Map, min_iter: usize) {
 
 fn criterion_benchmark(c: &mut Criterion) {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm");
+	m.add_zones("data/map2_zone_ids.pgm", 0.1);
     c.bench_function("prm map 5000",  |b| b.iter(|| prm_map(&m, 5000)));
     c.bench_function("prm map 15000", |b| b.iter(|| prm_map(&m, 15000)));
 }

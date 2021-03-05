@@ -194,6 +194,42 @@ impl Map {
 		traversed_space
 	}
 
+	fn get_successor_belief_states(&self, belief_state: &Vec<f64>, zone_id: usize) -> Vec<Vec<f64>> {
+		let mut output_beliefs: Vec<Vec<f64>> = Vec::new();
+
+		fn normalize(belief: &mut Vec<f64>) {
+			let sum = belief.iter().fold(0.0, |sum, p| sum + p );
+
+			for p in belief {
+				*p = *p / sum;
+			}
+		}
+
+		let mask = &self.zones_to_worlds[zone_id];
+
+		// assum closed
+		let mut belief_close = belief_state.clone();
+		for w in 0..mask.len() {
+			belief_close[w] = if mask[w] { 0.0 } else { belief_state[w] };
+		}
+		normalize(&mut belief_close);
+		if ! belief_close.iter().any(|&p| p.is_nan()) {
+			output_beliefs.push(belief_close);
+		}
+
+		// assume open
+		let mut belief_open = belief_state.clone();
+		for w in 0..mask.len() {
+			belief_open[w] = if mask[w] { belief_state[w] } else { 0.0 };
+		}
+		normalize(&mut belief_open);
+		if ! belief_open.iter().any(|&p| p.is_nan()) {
+			output_beliefs.push(belief_open);
+		}
+
+		output_beliefs
+	}
+
 	// drawing functions
 	pub fn resize(&mut self, factor: u32) {
 		let w = self.img.width() * factor;
@@ -345,38 +381,43 @@ impl PRMFuncs<2> for Map {
 		symbolic_validity && geometric_validitiy
 	}
 
-	fn observe(&self, state: &[f64; 2], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
-		let mut output_beliefs: Vec<Vec<f64>> = Vec::new();
+	fn reachable_belief_states(&self, belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
+		let mut reachable_beliefs: Vec<Vec<f64>> = Vec::new();
+		let mut lifo: Vec<(Vec<f64>, Vec<usize>)> = Vec::new(); // bs, doors to check
 
-		fn normalize(belief: &mut Vec<f64>) {
-			let sum = belief.iter().fold(0.0, |sum, p| sum + p );
+		reachable_beliefs.push(belief_state.clone());
+		lifo.push((belief_state.clone(), (0..self.n_zones).collect()));
 
-			for p in belief {
-				*p = *p / sum;
+		
+		while lifo.len() > 0 {
+			let (belief, zones_to_check) = lifo.pop().unwrap();
+
+			for &zone_id in &zones_to_check {
+				let zones = zones_to_check.clone(); // TODO: improve here
+				let remaining_zones: Vec<usize> = zones.into_iter().filter(|id| *id != zone_id).collect();
+
+				let successors = self.get_successor_belief_states(&belief, zone_id);
+
+				for successor in &successors {
+					if !reachable_beliefs.contains(successor) {
+						reachable_beliefs.push(successor.clone());
+						lifo.push((successor.clone(), remaining_zones.clone()));
+					}
+				}
 			}
 		}
+
+		reachable_beliefs
+	}
+
+	fn observe(&self, state: &[f64; 2], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
+		let mut output_beliefs: Vec<Vec<f64>> = Vec::new();
 
 		for zone_id in 0..self.n_zones {
 			if norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
 				if output_beliefs.len() > 0 { panic!("zone overlap not yet supported"); }
 
-				let mask = &self.zones_to_worlds[zone_id];
-
-				// assum closed
-				let mut belief_close = belief_state.clone();
-				for w in 0..mask.len() {
-					belief_close[w] = if mask[w] { 0.0 } else { belief_state[w] };
-				}
-				normalize(&mut belief_close);
-				output_beliefs.push(belief_close);
-
-				// assume open
-				let mut belief_open = belief_state.clone();
-				for w in 0..mask.len() {
-					belief_open[w] = if mask[w] { belief_state[w] } else { 0.0 };
-				}
-				normalize(&mut belief_open);
-				output_beliefs.push(belief_open);
+				output_beliefs = self.get_successor_belief_states(belief_state, zone_id);
 			}
 		}
 
@@ -494,10 +535,40 @@ fn test_map_2_observation_model() {
 	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map2_zone_ids.pgm", 0.1);
 
-	// belief state transitions
+	// regular belief state transitions
 	let posteriors = map.observe(&[0.54, -0.5], &vec![0.25; 4]);
 	assert_eq!(posteriors[0], vec![0.5, 0.0, 0.5, 0.0]); // zone 0 close
 	assert_eq!(posteriors[1], vec![0.0, 0.5, 0.0, 0.5]); // zone 0 open
+
+	// perculiar belief state transitions
+	let posteriors = map.observe(&[0.54, -0.5], &vec![1.0, 0.0, 0.0, 0.0]); // already in open belief state!
+	assert_eq!(posteriors, vec![vec![1.0, 0.0, 0.0, 0.0]]);
+
+	let posteriors = map.observe(&[0.54, -0.5], &vec![0.0, 1.0, 0.0, 0.0]); // already in close belief state!
+	assert_eq!(posteriors, vec![vec![0.0, 1.0, 0.0, 0.0]]);
+
+	let posteriors = map.observe(&[0.54, -0.5], &vec![0.5, 0.5, 0.0, 0.0]);
+	assert_eq!(posteriors[0], vec![1.0, 0.0, 0.0, 0.0]); // zone 0 close
+	assert_eq!(posteriors[1], vec![0.0, 1.0, 0.0, 0.0]); // zone 0 open
+	assert_eq!(posteriors.len(), 2); // zone 0 open
+}
+
+#[test]
+fn test_map_2_reachable_beliefs() {
+	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+
+	let reachable_beliefs = map.reachable_belief_states(&vec![0.25; 4]);
+	assert_eq!(reachable_beliefs.len(), 9); 
+	assert!(reachable_beliefs.contains(&vec![0.25; 4]));
+	assert!(reachable_beliefs.contains(&vec![0.5, 0.5, 0.0, 0.0]));
+	assert!(reachable_beliefs.contains(&vec![0.5, 0.0, 0.5, 0.0]));
+	assert!(reachable_beliefs.contains(&vec![0.0, 0.5, 0.0, 0.5]));
+	assert!(reachable_beliefs.contains(&vec![0.0, 0.0, 0.5, 0.5]));
+	assert!(reachable_beliefs.contains(&vec![1.0, 0.0, 0.0, 0.0]));
+	assert!(reachable_beliefs.contains(&vec![0.0, 1.0, 0.0, 0.0]));
+	assert!(reachable_beliefs.contains(&vec![0.0, 0.0, 1.0, 0.0]));
+	assert!(reachable_beliefs.contains(&vec![0.0, 0.0, 0.0, 1.0]));
 }
 
 // MAP 4 zones

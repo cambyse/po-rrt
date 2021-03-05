@@ -95,10 +95,13 @@ pub trait PRMFuncs<const N: usize> {
 		norm2(a,b)
 	}
 
-	fn observe(&self, _state: &[f64; N], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
+	fn reachable_belief_states(&self, belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
 		vec![belief_state.clone()]
 	}
 
+	fn observe(&self, _state: &[f64; N], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
+		vec![belief_state.clone()]
+	}
 }
 
 #[derive(Clone)]
