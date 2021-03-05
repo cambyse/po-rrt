@@ -45,7 +45,7 @@ impl<'a, const N: usize> RRTTree<'a, N> {
 		node.parents = parents;
 	}
 
-	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>, _world_mask: &Reachable) -> Vec<f64> {
+	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>) -> Vec<f64> {
 		if leaf_ids.is_empty() {
 			return vec![];
 		}
@@ -171,7 +171,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 				let mut parents = vec![];
 				for (world_mask, neighbour_ids) in worldmask_neighbours.into_iter() {
 					// Evaluate which is the best parent that we can possibly get
-					let distances = self.rrttree.distances_from_common_ancestor(&neighbour_ids, &world_mask);
+					let distances = self.rrttree.distances_from_common_ancestor(&neighbour_ids);
 					let (parent_id, _parent_distance) = zip(&neighbour_ids, &distances)
 						.map(|(id,d)| (*id, *d))
 						.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())

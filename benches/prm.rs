@@ -14,10 +14,10 @@ fn prm_map(m: &Map, min_iter: usize) {
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   m);
-	//bitvec![]
+
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, min_iter, 100000).unwrap();
-	prm.plan().unwrap();
-	prm.react(&[0.0, -0.8], &vec![0.25; 4], 0.1).unwrap();
+	prm.plan_qmdp().unwrap();
+	prm.react_qmdp(&[0.0, -0.8], &vec![0.25; 4], 0.1).unwrap();
 }
 
 

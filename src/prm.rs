@@ -114,7 +114,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
-	pub fn plan(&mut self) -> Result<(), &'static str> {
+	pub fn plan_qmdp(&mut self) -> Result<(), &'static str> {
 		// compute the cost to goals
 		self.cost_to_goals = vec![Vec::new(); self.n_worlds];
 		for world in 0..self.n_worlds {
@@ -128,7 +128,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		Ok(())
 	}
 
-	pub fn react(&mut self, start: &[f64; N], belief_state: &Vec<f64>, common_horizon: f64) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
+	pub fn react_qmdp(&mut self, start: &[f64; N], belief_state: &Vec<f64>, common_horizon: f64) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
 		let kd_start = self.kdtree.nearest_neighbor(*start);
 
 		let (common_path, id) = self.get_common_path(kd_start.id, belief_state, common_horizon).unwrap();
@@ -242,8 +242,8 @@ fn test_plan_on_map2() {
 						   &m);
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.plan().expect("general solution couldn't be found");
-	let paths = prm.react(&[0.55, -0.6], &vec![1.0/4.0; 4], 0.2).expect("impossible to extract policy");
+	prm.plan_qmdp().expect("general solution couldn't be found");
+	let paths = prm.react_qmdp(&[0.55, -0.6], &vec![1.0/4.0; 4], 0.2).expect("impossible to extract policy");
 	prm.print_summary();
 
 	let mut full = m.clone();
@@ -272,8 +272,8 @@ fn test_plan_on_map4() {
 						   &m);
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.plan().expect("general solution couldn't be found");
-	let paths = prm.react(&[0.55, -0.6], &vec![1.0/16.0; 16], 0.2).expect("impossible to extract policy");
+	prm.plan_qmdp().expect("general solution couldn't be found");
+	let paths = prm.react_qmdp(&[0.55, -0.6], &vec![1.0/16.0; 16], 0.2).expect("impossible to extract policy");
 	prm.print_summary();
 
 	let mut full = m.clone();
@@ -305,8 +305,8 @@ fn test_plan_on_map1_2_goals() {
 						   &m);
 
 	prm.grow_graph(&[-0.8, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.plan().expect("general solution couldn't be found");
-	let paths = prm.react(&[-0.8, -0.8], &vec![0.5, 0.5], 0.2).expect("impossible to extract policy");
+	prm.plan_qmdp().expect("general solution couldn't be found");
+	let paths = prm.react_qmdp(&[-0.8, -0.8], &vec![0.5, 0.5], 0.2).expect("impossible to extract policy");
 	prm.print_summary();
 
 	let mut full = m.clone();
@@ -337,7 +337,7 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 
 	assert_ne!(Ok(()), prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 300, 1000));
 
-	prm.plan().unwrap(); // panics
+	prm.plan_qmdp().unwrap(); // panics
 }
 }
 
