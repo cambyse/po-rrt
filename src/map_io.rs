@@ -27,7 +27,8 @@ pub struct Map
 	zones: Option<image::GrayImage>,
 	n_zones: usize,
 	n_worlds: usize,
-	zones_to_worlds: Vec<WorldMask>
+	zones_to_worlds: Vec<WorldMask>,
+	zone_positions: Vec<[f64;2]>
 }
 
 // Given N zones, there are 2^N possible worlds
@@ -43,7 +44,7 @@ impl Map {
 	fn build(img: image::GrayImage, low: [f64; 2], up: [f64; 2])-> Map {
 		let ppm = (img.width() as f64) / (up[0] - low[0]);
 
-		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new()}
+		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new(), zone_positions: Vec::new()}
 	}
 
 
@@ -58,10 +59,18 @@ impl Map {
 
 	// zones specific
 	pub fn add_zones(&mut self, filepath : &str) {
-		// image
 		self.zones = Some(Self::open_image(filepath));
 
-		// number of zones
+		self.init_zone_ids();
+		self.init_zone_positions();
+
+		// zone -> worlds
+		for i in 0..self.n_zones {
+			self.zones_to_worlds.push(self.zone_index_to_world_mask(i));
+		}
+	}
+
+	pub fn init_zone_ids(&mut self) {
 		let mut max_id = 0;
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
@@ -79,10 +88,26 @@ impl Map {
 		
 		self.n_zones = max_id + 1;
 		self.n_worlds = (2 as u32).pow(self.n_zones as u32) as usize;
+	}
 
-		// zone -> worlds
-		for i in 0..self.n_zones {
-			self.zones_to_worlds.push(self.zone_index_to_world_mask(i));
+	pub fn init_zone_positions(&mut self) {
+		let mut zone_to_pixels: Vec<Vec<[u32; 2]>> = vec![Vec::new(); self.n_zones];
+		for i in 0..self.zones.as_ref().unwrap().height() {
+			for j in 0..self.zones.as_ref().unwrap().width() {
+				let z = self.get_zone_index(i, j);
+				match z {
+					Some(id) => {
+						zone_to_pixels[id].push([i, j]);
+					},
+					None => {}
+				}	
+			}
+		}
+		
+		for pixel_coords in &zone_to_pixels {
+			let sum = pixel_coords.iter().fold( [0, 0], | [sum_i, sum_j], [i, j] | [sum_i+i, sum_j+j] );
+			let ij = [sum[0] / pixel_coords.len() as u32, sum[1] / pixel_coords.len() as u32];
+			self.zone_positions.push(self.to_coordinates(&ij))
 		}
 	}
 
@@ -109,6 +134,13 @@ impl Map {
 		let j: u32 = ((xy[0] - self.low[0]) * self.ppm) as u32;
 
 		[i, j]
+	}
+
+	fn to_coordinates(&self, ij: &[u32; 2]) -> [f64; 2] {
+		let x: f64 = ij[1] as f64 / self.ppm + self.low[1];
+		let y: f64 = (self.img.height() - 1 - ij[0]) as f64 / self.ppm + self.low[0];
+
+		[x, y]
 	}
 
 	fn get_zone_index(&self, i: u32, j: u32) -> Option<usize> {
@@ -310,6 +342,10 @@ impl PRMFuncs<2> for Map {
 
 		symbolic_validity && geometric_validitiy
 	}
+
+	fn observe(&self, _state: &[f64; 2], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
+		vec![belief_state.clone()]
+	}
 }
 
 #[cfg(test)]
@@ -322,6 +358,23 @@ use std::path::Path;
 #[test]
 fn open_image() {
 	Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+}
+
+#[test]
+fn coordinate_conversion() {
+	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+
+	let xys = [[0.5, 0.3], [-0.5, 0.1], [-0.1, -0.4]];
+
+	for xy in &xys {
+		let ij = m.to_pixel_coordinates(&xy);
+		let xy_after_roundtrip = m.to_coordinates(&ij);
+		
+		let d = norm2(&xy, &xy_after_roundtrip);
+		let dmax = (2.0 as f64).sqrt() * 2.0 / 200.0;
+	
+		assert!(d <= dmax);
+	}
 }
 
 #[test]

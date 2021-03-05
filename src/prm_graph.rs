@@ -94,6 +94,11 @@ pub trait PRMFuncs<const N: usize> {
 	fn cost_evaluator(&self, a: &[f64; N], b: &[f64; N]) -> f64 {
 		norm2(a,b)
 	}
+
+	fn observe(&self, _state: &[f64; N], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
+		vec![belief_state.clone()]
+	}
+
 }
 
 #[derive(Clone)]

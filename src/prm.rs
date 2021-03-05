@@ -114,6 +114,10 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
+	pub fn plan_belief_state(&mut self, _belief_state: &Vec<f64>) {
+		// belief state graph
+	}
+
 	pub fn plan_qmdp(&mut self) -> Result<(), &'static str> {
 		// compute the cost to goals
 		self.cost_to_goals = vec![Vec::new(); self.n_worlds];
