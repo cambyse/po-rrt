@@ -233,7 +233,7 @@ fn test_sibling_extraction() {
     
     let siblings = graph.siblings(0, 4);
 
-    assert_eq!(siblings, vec![(4, 0.6), (10, 0.4)]);
+    assert_eq!(siblings, vec![(4, 0.5), (10, 0.5)]);
 }
 
 #[test]

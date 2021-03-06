@@ -83,3 +83,24 @@ impl PartialEq for Priority {
 }
 
 impl Eq for Priority {}
+
+pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
+	for (&p, v) in belief_state.iter().zip(validity) {
+		if p > 0.0 && ! v {
+			return false;
+		}
+	}
+
+	true
+}
+
+
+pub struct PolicyNode<const N: usize> {
+	pub state: [f64; N],
+	pub parent: Option<usize>,
+	pub children: Vec<usize>,
+}
+
+pub struct Policy<const N: usize> {
+	pub nodes: Vec<PolicyNode<N>>
+}

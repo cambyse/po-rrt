@@ -6,7 +6,9 @@ use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use crate::prm_graph::*;
 use crate::prm_reachability::*;
+use crate::prm_belief_graph::*;
 use bitvec::prelude::*;
+use std::{collections::HashMap, ops::Index};
 
 pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	continuous_sampler: ContinuousSampler<N>,
@@ -114,15 +116,85 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
-	pub fn plan_belief_state(&mut self, belief_state: &Vec<f64>) {
+	pub fn plan_belief_state(&mut self, belief_state: &Vec<f64>) -> Policy<N> {
 		// build belief state graph
-		let _reachable_belief_states = self.fns.reachable_belief_states(belief_state);
-		
-		/*for &node: self.graph.nodes {
-			for &belief_state in reachable_belief_states {
+		let reachable_belief_states = self.fns.reachable_belief_states(belief_state);
 
+
+		let mut belief_space_graph: PRMBeliefGraph<N> = PRMBeliefGraph{belief_nodes: Vec::new()};
+		let mut node_to_belief_nodes: Vec<Vec<Option<usize>>> = vec![vec![None; reachable_belief_states.len()]; self.graph.n_nodes()];
+		// build nodes
+		for (id, node) in self.graph.nodes.iter().enumerate() {
+			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
+				let belief_node_id = belief_space_graph.add_node(node.state.clone(), belief_state.clone());
+
+				if is_compatible(belief_state, &node.validity) {
+					node_to_belief_nodes[id][belief_id] = Some(belief_node_id);
+				}
+/*				else
+				{
+					dbg!(&node.validity);
+					dbg!(&belief_state);
+				}*/
 			}
-		}*/
+		}
+
+		// build possible edges (within same belief)
+		for (id, node) in self.graph.nodes.iter().enumerate() {
+			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
+				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
+
+				if parent_belief_node_id.is_none() { continue; }
+
+				for &child_id in &node.children {
+					let child = &self.graph.nodes[child_id];
+					let child_belief_states = self.fns.observe(&child.state, &belief_state);
+
+					/*
+					if child_belief_states.len() > 1 {
+						dbg!(&belief_state);
+						dbg!(&child_belief_states);
+					}*/
+
+					for child_belief_state in &child_belief_states {
+						let child_belief_id = reachable_belief_states.iter().position(|belief| belief == child_belief_state ).expect("belief state should be found here"); // TODO: improve
+						let child_belief_node_id = node_to_belief_nodes[child_id][child_belief_id];
+						if child_belief_node_id.is_some() { // if child is inside the zone, it might be none (TODO: adjust that)
+							belief_space_graph.add_edge(parent_belief_node_id.unwrap(), child_belief_node_id.unwrap());
+						}
+					}
+				}
+			}
+		}
+
+		// get all final node ids
+		let mut final_node_ids: Vec<usize> = Vec::new();
+		for world in 0..self.n_worlds {
+			final_node_ids.extend(self.conservative_reachability.final_nodes_for_world(world));
+		}
+		//let mut final_belief_state_node_ids = final_node_ids.iter().fold(Vec::new(), |finals, final_id| { finals.extend(node_to_belief_nodes[final_id]); finals } );
+		let mut final_belief_state_node_ids: Vec<usize> = Vec::new();
+		for final_id in final_node_ids {
+			for belief_node_id in &node_to_belief_nodes[final_id] {
+				if belief_node_id.is_some() {
+					final_belief_state_node_ids.push(belief_node_id.unwrap());
+				}
+			}
+		}
+
+		// DP in belief state
+		let dists = conditional_dijkstra(&belief_space_graph, &final_belief_state_node_ids, self.fns);
+
+		// sanity check
+		dbg!(&dists[0]);
+		dbg!(&dists[final_belief_state_node_ids[0]]);
+
+		// extract policy
+		let mut policy: Policy<N> = Policy{nodes: Vec::new()};
+		{
+			
+		}
+		policy
 	}
 
 	pub fn plan_qmdp(&mut self) -> Result<(), &'static str> {
@@ -252,7 +324,7 @@ fn test_plan_on_map2_pomdp() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000).expect("graph not grown up to solution");
 	prm.plan_belief_state(&vec![1.0/4.0; 4]);
 }
 

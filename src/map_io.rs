@@ -421,6 +421,10 @@ impl PRMFuncs<2> for Map {
 			}
 		}
 
+		if output_beliefs.len() == 0 {
+			output_beliefs.push(belief_state.clone());
+		}
+
 		output_beliefs
 	}
 }
@@ -531,7 +535,7 @@ fn test_map_2_states() {
 }
 
 #[test]
-fn test_map_2_observation_model() {
+fn test_map_2_observation_model_in_zones() {
 	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map2_zone_ids.pgm", 0.1);
 
@@ -551,6 +555,15 @@ fn test_map_2_observation_model() {
 	assert_eq!(posteriors[0], vec![1.0, 0.0, 0.0, 0.0]); // zone 0 close
 	assert_eq!(posteriors[1], vec![0.0, 1.0, 0.0, 0.0]); // zone 0 open
 	assert_eq!(posteriors.len(), 2); // zone 0 open
+}
+
+#[test]
+fn test_map_2_observation_model_outside_zones() {
+	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+
+	let posteriors = map.observe(&[-0.3, -0.5], &vec![0.25; 4]);
+	assert_eq!(posteriors, vec![vec![0.25; 4]]);
 }
 
 #[test]
