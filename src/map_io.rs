@@ -381,9 +381,9 @@ impl PRMFuncs<2> for Map {
 		symbolic_validity && geometric_validitiy
 	}
 
-	fn reachable_belief_states(&self, belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
-		let mut reachable_beliefs: Vec<Vec<f64>> = Vec::new();
-		let mut lifo: Vec<(Vec<f64>, Vec<usize>)> = Vec::new(); // bs, doors to check
+	fn reachable_belief_states(&self, belief_state: &BeliefState) -> Vec<BeliefState> {
+		let mut reachable_beliefs: Vec<BeliefState> = Vec::new();
+		let mut lifo: Vec<(BeliefState, Vec<usize>)> = Vec::new(); // bs, doors to check
 
 		reachable_beliefs.push(belief_state.clone());
 		lifo.push((belief_state.clone(), (0..self.n_zones).collect()));
@@ -410,8 +410,8 @@ impl PRMFuncs<2> for Map {
 		reachable_beliefs
 	}
 
-	fn observe(&self, state: &[f64; 2], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
-		let mut output_beliefs: Vec<Vec<f64>> = Vec::new();
+	fn observe(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
+		let mut output_beliefs: Vec<BeliefState> = Vec::new();
 
 		for zone_id in 0..self.n_zones {
 			if norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {

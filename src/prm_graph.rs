@@ -112,6 +112,12 @@ pub struct PRMNode<const N: usize> {
 	pub children: Vec<usize>,
 }
 
+impl<const N: usize> GraphNode<N> for PRMNode<N> {
+	fn state(&self) -> &[f64; N] {
+		&self.state
+	}
+}
+
 #[derive(Clone)]
 pub struct PRMGraph<const N: usize> {
 	pub nodes: Vec<PRMNode<N>>,
@@ -152,6 +158,41 @@ impl<const N: usize> PRMGraph<N> {
 	}
 }
 
+impl<const N: usize> Graph<N> for PRMGraph<N> {
+	fn node(&self, id:usize) -> &dyn GraphNode<N> {
+		&self.nodes[id]
+	}
+	fn n_nodes(&self) -> usize {
+		self.nodes.len()
+	}
+	fn children(&self, id: usize) -> Vec<usize> {
+		self.nodes[id].children.clone()
+	}
+	fn parents(&self, id:usize) -> Vec<usize> {
+		self.nodes[id].parents.clone()
+	}
+}
+
+pub struct PRMGraphWorldView<'a, const N: usize> {
+	pub graph: &'a PRMGraph<N>,
+	pub world: usize
+}
+
+impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
+	fn node(&self, id:usize) -> &dyn GraphNode<N> {
+		self.graph.node(id)
+	}
+	fn n_nodes(&self) -> usize {
+		self.graph.n_nodes()
+	}
+	fn children(&self, id: usize) -> Vec<usize> {
+		self.graph.nodes[id].children.iter().filter(|&id| self.graph.nodes[*id].validity[self.world]).map(|&id| id).collect()
+	}
+	fn parents(&self, id:usize) -> Vec<usize> {
+		self.graph.nodes[id].parents.iter().filter(|&id| self.graph.nodes[*id].validity[self.world]).map(|&id| id).collect()
+	}
+}
+
 /****************************Dijkstra******************************/
 use std::cmp::Ordering;
 
@@ -179,37 +220,31 @@ impl PartialEq for Priority {
 
 impl Eq for Priority {}
 
-pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMGraph<N>, final_node_ids: &Vec<usize>, world: usize, m: &F) -> Vec<f64> {
+pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_node_ids: &Vec<usize>, m: &F) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
-	// complexité n log n
-	let mut dist = vec![std::f64::INFINITY ;graph.nodes.len()];
-	let mut prev = vec![0 ;graph.nodes.len()];
+	// complexité n log n ;graph.nodes.len()
+	let mut dist = vec![std::f64::INFINITY; graph.n_nodes()];
+	let mut prev = vec![0; graph.n_nodes()];
 	let mut q = PriorityQueue::new();
 	
 	for &id in final_node_ids {
 		dist[id] = 0.0;
 		q.push(id, Priority{prio: 0.0});
-
-		if ! graph.nodes[id].validity[world] {
-			panic!("final nodes must be valid in considered world");
-		}
 	}
 
 	while !q.is_empty() {
 		let (u_id, _) = q.pop().unwrap();
-		let u = &graph.nodes[u_id];
+		let u = &graph.node(u_id);
 		
-		for &v_id in &u.parents {
-			let v = &graph.nodes[v_id];
+		for v_id in graph.parents(u_id) {
+			let v = &graph.node(v_id);
 
-			if v.validity[world] {
-				let alt = dist[u_id] + m.cost_evaluator(&u.state, &v.state);
+			let alt = dist[u_id] + m.cost_evaluator(u.state(), v.state());
 
-				if alt < dist[v_id] {
-					dist[v_id] = alt;
-					prev[v_id] = u_id;
-					q.push(v_id, Priority{prio: alt});
-				}
+			if alt < dist[v_id] {
+				dist[v_id] = alt;
+				prev[v_id] = u_id;
+				q.push(v_id, Priority{prio: alt});
 			}
 		}
 	}
@@ -432,7 +467,7 @@ fn test_policy_extraction_on_diamond_graph() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists = dijkstra(&graph, &vec![3], 0, &Funcs{});
+	let dists = dijkstra(&graph, &vec![3], &Funcs{});
 
 	let policy = get_policy_graph(&graph, &vec![dists]).unwrap();
 
@@ -448,8 +483,8 @@ fn test_policy_extraction_on_diamond_graph_2_worlds() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists_w0 = dijkstra(&graph, &vec![3], 0, &Funcs{});
-	let dists_w1 = dijkstra(&graph, &vec![3], 1, &Funcs{});
+	let dists_w0 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 0}, &vec![3], &Funcs{});
+	let dists_w1 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 1}, &vec![3], &Funcs{});
 
 	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
 
@@ -465,8 +500,8 @@ fn test_policy_extraction_on_grid_with_2_different_goals() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists_w0 = dijkstra(&graph, &vec![2], 0, &Funcs{});
-	let dists_w1 = dijkstra(&graph, &vec![5], 0, &Funcs{});
+	let dists_w0 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 0}, &vec![2], &Funcs{});
+	let dists_w1 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 0}, &vec![5], &Funcs{});
 
 	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
 
@@ -482,7 +517,7 @@ fn test_dijkstra_on_minimal_graph() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists = dijkstra(&graph, &vec![1], 0, &Funcs{});
+	let dists = dijkstra(&graph, &vec![1], &Funcs{});
 
 	assert_eq!(dists, vec![1.0, 0.0]);
 }
@@ -493,7 +528,7 @@ fn test_dijkstra_on_grid_graph_single_goal() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists = dijkstra(&graph, &vec![8], 0, &Funcs{});
+	let dists = dijkstra(&graph, &vec![8], &Funcs{});
 
 	assert_eq!(dists, vec![4.0, 3.0, 2.0, 3.0, 2.0, 1.0, 2.0, 1.0, 0.0]);
 }
@@ -504,7 +539,7 @@ fn test_dijkstra_on_grid_graph_two_goals() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists = dijkstra(&graph, &vec![7, 5], 0, &Funcs{});
+	let dists = dijkstra(&graph, &vec![7, 5], &Funcs{});
 
 	assert_eq!(dists, vec![3.0, 2.0, 1.0, 2.0, 1.0, 0.0, 1.0, 0.0, 1.0]);
 }
@@ -515,7 +550,7 @@ fn test_dijkstra_without_final_node() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists = dijkstra(&graph, &vec![], 0, &Funcs{});
+	let dists = dijkstra(&graph, &vec![], &Funcs{});
 
 	assert_eq!(dists, vec![std::f64::INFINITY; 9]);
 }
@@ -526,7 +561,7 @@ fn test_dijkstra_on_oriented_grid() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
-	let dists = dijkstra(&graph, &vec![3], 0, &Funcs{});
+	let dists = dijkstra(&graph, &vec![3], &Funcs{});
 
 	assert_eq!(dists, vec![2.0, 1.0, std::f64::INFINITY, 0.0]);
 }

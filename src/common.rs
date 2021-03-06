@@ -41,3 +41,15 @@ pub fn pairwise_iter<T>(v: &Vec<T>) -> Zip<Iter<T>, Iter<T>> {
 }
 
 pub type WorldMask = BitVec;
+pub type BeliefState = Vec<f64>;
+
+pub trait GraphNode<const N: usize> {
+	fn state(&self) -> &[f64; N];
+}
+
+pub trait Graph<const N: usize> {
+	fn node(&self, id:usize) -> &dyn GraphNode<N>;
+	fn n_nodes(&self) -> usize;
+	fn children(&self, id: usize) -> Vec<usize>;
+	fn parents(&self, id: usize) -> Vec<usize>;
+}

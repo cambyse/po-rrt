@@ -114,8 +114,15 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
-	pub fn plan_belief_state(&mut self, _belief_state: &Vec<f64>) {
-		// belief state graph
+	pub fn plan_belief_state(&mut self, belief_state: &Vec<f64>) {
+		// build belief state graph
+		let _reachable_belief_states = self.fns.reachable_belief_states(belief_state);
+		
+		/*for &node: self.graph.nodes {
+			for &belief_state in reachable_belief_states {
+
+			}
+		}*/
 	}
 
 	pub fn plan_qmdp(&mut self) -> Result<(), &'static str> {
@@ -126,7 +133,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			if final_nodes.is_empty() {
 				return Err(&"We should have final node ids for each world")
 			}
-			self.cost_to_goals[world] = dijkstra(&self.graph, &final_nodes, world, self.fns);
+			self.cost_to_goals[world] = dijkstra(&PRMGraphWorldView{graph: &self.graph, world: world}, &final_nodes, self.fns);
 		}
 
 		Ok(())
@@ -233,7 +240,24 @@ mod tests {
 use super::*;
 
 #[test]
-fn test_plan_on_map2() {
+fn test_plan_on_map2_pomdp() {
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm", 0.1);
+
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
+	}
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSampler::new(),
+						   &m);
+
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.plan_belief_state(&vec![1.0/4.0; 4]);
+}
+
+#[test]
+fn test_plan_on_map2_qmdp() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm", 0.1);
 
@@ -259,7 +283,7 @@ fn test_plan_on_map2() {
 	for path in paths {
 		full.draw_path(path);
 	}
-	full.save("results/test_plan_on_map2.pgm");
+	full.save("results/test_plan_on_map2_qmdp.pgm");
 }
 
 #[test]
