@@ -9,6 +9,7 @@ pub mod rrt;
 pub mod prm;
 pub mod prm_graph;
 pub mod prm_reachability;
+pub mod prm_belief_graph;
 
 use crate::prm::*;
 use crate::prm_graph::*;

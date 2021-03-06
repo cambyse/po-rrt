@@ -53,3 +53,33 @@ pub trait Graph<const N: usize> {
 	fn children(&self, id: usize) -> Vec<usize>;
 	fn parents(&self, id: usize) -> Vec<usize>;
 }
+
+pub trait ObservationGraph {
+	fn siblings(&self, parent_id: usize, id: usize) -> Vec<(usize, f64)>; // in case of observation branching, returns the siblings obtained from other observations along with their probability
+}
+
+use std::cmp::Ordering;
+
+pub struct Priority{
+	pub prio: f64
+}
+
+impl Ord for Priority {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.prio < other.prio { Ordering::Greater } else { Ordering::Less }
+    }
+}
+
+impl PartialOrd for Priority {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Priority {
+    fn eq(&self, other: &Self) -> bool {
+        self.prio == other.prio
+    }
+}
+
+impl Eq for Priority {}

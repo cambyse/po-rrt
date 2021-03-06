@@ -194,31 +194,6 @@ impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
 }
 
 /****************************Dijkstra******************************/
-use std::cmp::Ordering;
-
-struct Priority{
-	prio: f64
-}
-
-impl Ord for Priority {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.prio < other.prio { Ordering::Greater } else { Ordering::Less }
-    }
-}
-
-impl PartialOrd for Priority {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Priority {
-    fn eq(&self, other: &Self) -> bool {
-        self.prio == other.prio
-    }
-}
-
-impl Eq for Priority {}
 
 pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_node_ids: &Vec<usize>, m: &F) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
@@ -233,18 +208,18 @@ pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, fina
 	}
 
 	while !q.is_empty() {
-		let (u_id, _) = q.pop().unwrap();
-		let u = &graph.node(u_id);
+		let (v_id, _) = q.pop().unwrap();
+		let v = &graph.node(v_id);
 		
-		for v_id in graph.parents(u_id) {
-			let v = &graph.node(v_id);
+		for u_id in graph.parents(v_id) {
+			let u = &graph.node(u_id);
 
-			let alt = dist[u_id] + m.cost_evaluator(u.state(), v.state());
+			let alternative = dist[v_id] + m.cost_evaluator(u.state(), v.state());
 
-			if alt < dist[v_id] {
-				dist[v_id] = alt;
-				prev[v_id] = u_id;
-				q.push(v_id, Priority{prio: alt});
+			if alternative < dist[u_id] {
+				dist[u_id] = alternative;
+				prev[u_id] = u_id;
+				q.push(u_id, Priority{prio: alternative});
 			}
 		}
 	}
@@ -270,7 +245,6 @@ pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &Vec
 
 			// keep to if there is belief in which it would be the right decision: bs * cost(to) < bs * cost (other)
 			// => this means solving an LP
-
 			let mut problem = Problem::new(OptimizationDirection::Minimize);
 			let mut belief: Vec<minilp::Variable> = Vec::new();
 			
