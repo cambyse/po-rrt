@@ -269,6 +269,10 @@ impl Map {
 
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {
 		for parent in &policy.nodes {
+			if parent.children.len() > 1 {
+				self.draw_circle(&parent.state, self.visibility_distance / 10.0);
+			}
+
 			for &child_id in &parent.children {
 				let child = &policy.nodes[child_id];
 				self.draw_line(parent.state, child.state, 50)
