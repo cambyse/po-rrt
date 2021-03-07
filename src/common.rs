@@ -94,6 +94,9 @@ pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
 	true
 }
 
+pub fn assert_belief_state_validity(belief_state: &Vec<f64>) {
+	assert!((belief_state.iter().fold(0.0, |s, p| p + s) - 1.0).abs() < 0.000001);
+}
 
 pub struct PolicyNode<const N: usize> {
 	pub state: [f64; N],
@@ -103,4 +106,23 @@ pub struct PolicyNode<const N: usize> {
 
 pub struct Policy<const N: usize> {
 	pub nodes: Vec<PolicyNode<N>>
+}
+
+impl<const N: usize> Policy<N> {
+	pub fn add_node(&mut self, state: &[f64; N]) -> usize {
+		let id = self.nodes.len();
+
+		self.nodes.push(PolicyNode{
+			state: state.clone(),
+			parent: None,
+			children: Vec::new()
+		});
+
+		id
+	}
+
+	pub fn add_edge(&mut self, parent_id: usize, child_id: usize) {
+		self.nodes[parent_id].children.push(child_id);
+		self.nodes[child_id].parent = Some(parent_id);
+	}
 }

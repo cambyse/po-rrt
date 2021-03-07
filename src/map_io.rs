@@ -267,6 +267,15 @@ impl Map {
 		}
 	}
 
+	pub fn draw_policy(&mut self, policy: &Policy<2>) {
+		for parent in &policy.nodes {
+			for &child_id in &parent.children {
+				let child = &policy.nodes[child_id];
+				self.draw_line(parent.state, child.state, 50)
+			}
+		}
+	}
+
 	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: u8) {
 		let a_ij = self.to_pixel_coordinates(&a);
 		let b_ij = self.to_pixel_coordinates(&b);

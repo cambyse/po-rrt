@@ -11,7 +11,8 @@ use priority_queue::PriorityQueue;
 
 pub struct PRMBeliefNode<const N: usize> {
 	pub state: [f64; N],
-	pub belief_state: BeliefState,
+    pub belief_state: BeliefState,
+    pub belief_id: usize,
 	pub parents: Vec<usize>,
     pub children: Vec<usize>,
 }
@@ -24,16 +25,18 @@ impl<const N: usize> GraphNode<N> for PRMBeliefNode<N> {
 }
 
 pub struct PRMBeliefGraph<const N: usize> {
-	pub belief_nodes: Vec<PRMBeliefNode<N>>,
+    pub belief_nodes: Vec<PRMBeliefNode<N>>,
+    pub reachable_belief_states: Vec<Vec<f64>>
 }
 
 impl<const N: usize> PRMBeliefGraph<N> {
-	pub fn add_node(&mut self, state: [f64; N], belief_state: BeliefState) -> usize {
+	pub fn add_node(&mut self, state: [f64; N], belief_state: BeliefState, belief_id: usize) -> usize {
         let id = self.belief_nodes.len();
         self.belief_nodes.push(
             PRMBeliefNode{
                 state,
                 belief_state,
+                belief_id,
                 parents: Vec::new(),
                 children: Vec::new(),
             }
@@ -44,7 +47,11 @@ impl<const N: usize> PRMBeliefGraph<N> {
 	pub fn add_edge(&mut self, from_id: usize, to_id: usize) {
 		self.belief_nodes[from_id].children.push(to_id);
 		self.belief_nodes[to_id].parents.push(from_id);
-	}
+    }
+    
+    pub fn belief_id(&self, belief_state: &BeliefState) -> usize {
+        self.reachable_belief_states.iter().position(|belief| belief == belief_state).expect("belief state should be found here") // TODO: improve
+    }
 }
 
 impl<const N: usize> Graph<N> for PRMBeliefGraph<N> {
@@ -65,10 +72,6 @@ impl<const N: usize> Graph<N> for PRMBeliefGraph<N> {
 impl<const N: usize> ObservationGraph for PRMBeliefGraph<N> {
     fn siblings(&self, parent_id: usize, id: usize) -> Vec<(usize, f64)> {
 
-        fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -> f64 {
-            child_bs.iter().zip(parent_bs).fold(0.0, |s, (p, q)| s + p * q )
-        }
-
         let mut siblings: Vec<(usize, f64)> = Vec::new();
 
         let parent = &self.belief_nodes[parent_id];
@@ -85,35 +88,48 @@ impl<const N: usize> ObservationGraph for PRMBeliefGraph<N> {
     }
 }
 
+pub fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -> f64 {
+    child_bs.iter().zip(parent_bs).fold(0.0, |s, (p, q)| s + if *p > 0.0 { *q } else { 0.0 } )
+}
+
 pub fn conditional_dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & (impl Graph<N> + ObservationGraph), final_node_ids: &Vec<usize>, m: &F) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
-	let mut dist = vec![std::f64::INFINITY; graph.n_nodes()];
-	let mut prev = vec![0; graph.n_nodes()];
+    let mut dist = vec![std::f64::INFINITY; graph.n_nodes()];
 	let mut q = PriorityQueue::new();
-	
+    
+    println!("number of belief nodes:{}", graph.n_nodes());
+
 	for &id in final_node_ids {
 		dist[id] = 0.0;
-		q.push(id, Priority{prio: 0.0});
+        q.push(id, Priority{prio: 0.0});
 	}
 
+    let mut it = 0;
 	while !q.is_empty() {
-		let (v_id, _) = q.pop().unwrap();
-		
+        it+=1;
+        let (v_id, _) = q.pop().unwrap();
+        
+        // debug
+        if it % 10000 == 0 {
+            println!("number of iterations:{}", it);
+            println!("queue size:{}, v_id:{}", q.len(), v_id);
+        }
+        //
+
 		for u_id in graph.parents(v_id) {
             let u = &graph.node(u_id);
 
-            let mut alternative = dist[v_id];
+            let mut alternative = 0.0;
             for (vv_id, p) in graph.siblings(u_id, v_id) {
                 let vv = graph.node(vv_id);
-                alternative += p * m.cost_evaluator(u.state(), vv.state());
+                alternative += p * (m.cost_evaluator(u.state(), vv.state()) + dist[vv_id]);
             }
             
 			if alternative < dist[u_id] {
-				dist[u_id] = alternative;
-				prev[u_id] = u_id;
-				q.push(u_id, Priority{prio: alternative});
-			}
+                dist[u_id] = alternative;
+                q.push(u_id, Priority{prio: alternative});
+            }
 		}
 	}
 
@@ -125,7 +141,7 @@ mod tests {
 
 use super::*;
 
-fn create_graph_1() -> PRMBeliefGraph<2> {
+fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> PRMBeliefGraph<2> {
     /*
      G
     / \
@@ -149,116 +165,132 @@ fn create_graph_1() -> PRMBeliefGraph<2> {
     \ /
      0
      |
-    ( )
+    (4)
 
     bs: [0.5, 0.5]
     */
 
     /*    
-     9
+     10
     / \
-   8  ( )
+   9  ( )
    |   |
-   6   7
+   7   8
     \ /
-     5
+     6
      |
-     4
+     5
 
     bs: [1.0, 0.0]
     */
 
     /*    
-    15
+    16
     / \
-  ( )  14
+  ( )  15
    |   |
-   12  13
+   13  14
     \ /
-     11
+     12
      |
-     10
+     11
 
     bs: [0.0, 1.0]
     */
-    let mut belief_graph = PRMBeliefGraph{belief_nodes: Vec::new()};
-
+    let mut belief_graph = PRMBeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: Vec::new()};
+    
     // nodes
-    belief_graph.add_node([0.0, 1.0], vec![0.5, 0.5]); // 0
-    belief_graph.add_node([-1.0, 2.0], vec![0.5, 0.5]); // 1
-    belief_graph.add_node([1.0, 2.0], vec![0.5, 0.5]); // 2
-    belief_graph.add_node([0.0, 4.0], vec![0.5, 0.5]); // 3
-
-    belief_graph.add_node([0.0, 0.0], vec![1.0, 0.0]); // 4
-    belief_graph.add_node([0.0, 1.0], vec![1.0, 0.0]); // 5
-    belief_graph.add_node([-1.0, 2.0], vec![1.0, 0.0]);// 6
-    belief_graph.add_node([1.0, 2.0], vec![1.0, 0.0]);// 7
-    belief_graph.add_node([-1.0, 3.0], vec![1.0, 0.0]);// 8
-    belief_graph.add_node([0.0, 4.0], vec![1.0, 0.0]);// 9
+    belief_graph.add_node([0.0, 1.0], belief_states[0].clone(), 0); // 0
+    belief_graph.add_node([-1.0, 2.0], belief_states[0].clone(), 0); // 1
+    belief_graph.add_node([1.0, 2.0], belief_states[0].clone(), 0); // 2
+    belief_graph.add_node([0.0, 4.0], belief_states[0].clone(), 0); // 3
+    belief_graph.add_node([0.0, 0.0], belief_states[0].clone(), 0); // 4
 
 
-    belief_graph.add_node([0.0, 0.0], vec![0.0, 1.0]); // 10
-    belief_graph.add_node([0.0, 1.0], vec![0.0, 1.0]); // 11
-    belief_graph.add_node([-1.0, 2.0], vec![0.0, 1.0]); // 12
-    belief_graph.add_node([1.0, 2.0], vec![0.0, 1.0]); // 13
-    belief_graph.add_node([1.0, 3.0], vec![0.0, 1.0]); // 14
-    belief_graph.add_node([0.0, 4.0], vec![0.0, 1.0]); // 15
+    belief_graph.add_node([0.0, 0.0], belief_states[1].clone(), 1); // 5
+    belief_graph.add_node([0.0, 1.0], belief_states[1].clone(), 1); // 6
+    belief_graph.add_node([-1.0, 2.0], belief_states[1].clone(), 1);// 7
+    belief_graph.add_node([1.0, 2.0], belief_states[1].clone(), 1);// 8
+    belief_graph.add_node([-1.0, 3.0], belief_states[1].clone(), 1);// 9
+    belief_graph.add_node([0.0, 4.0], belief_states[1].clone(), 1);// 10
+
+
+    belief_graph.add_node([0.0, 0.0], belief_states[2].clone(), 2); // 11
+    belief_graph.add_node([0.0, 1.0], belief_states[2].clone(), 2); // 12
+    belief_graph.add_node([-1.0, 2.0], belief_states[2].clone(), 2); // 13
+    belief_graph.add_node([1.0, 2.0], belief_states[2].clone(), 2); // 14
+    belief_graph.add_node([10.0, 3.0], belief_states[2].clone(), 2); // 15
+    belief_graph.add_node([0.0, 4.0], belief_states[2].clone(), 2); // 16
 
 
     // edges
     belief_graph.add_edge(0, 1); belief_graph.add_edge(1, 0);
     belief_graph.add_edge(0, 2); belief_graph.add_edge(2, 0);
+    belief_graph.add_edge(0, 4); belief_graph.add_edge(4, 0); 
 
-    belief_graph.add_edge(4, 5); belief_graph.add_edge(5, 4);
+    belief_graph.add_edge(4, 5); // important, belief transition
     belief_graph.add_edge(5, 6); belief_graph.add_edge(6, 5);
-    belief_graph.add_edge(5, 7); belief_graph.add_edge(7, 5);
+    belief_graph.add_edge(6, 7); belief_graph.add_edge(7, 6);
     belief_graph.add_edge(6, 8); belief_graph.add_edge(8, 6);
-    belief_graph.add_edge(8, 9); belief_graph.add_edge(9, 8);
+    belief_graph.add_edge(7, 9); belief_graph.add_edge(9, 7);
+    belief_graph.add_edge(9, 10); belief_graph.add_edge(10, 9);
 
-    belief_graph.add_edge(10, 11); belief_graph.add_edge(11, 10);
+    belief_graph.add_edge(4, 11); // important, belief transition
     belief_graph.add_edge(11, 12); belief_graph.add_edge(12, 11);
-    belief_graph.add_edge(11, 13); belief_graph.add_edge(13, 11);
-    belief_graph.add_edge(13, 14); belief_graph.add_edge(14, 13);
+    belief_graph.add_edge(12, 13); belief_graph.add_edge(13, 12);
+    belief_graph.add_edge(12, 14); belief_graph.add_edge(14, 12);
     belief_graph.add_edge(14, 15); belief_graph.add_edge(15, 14);
-
-    belief_graph.add_edge(0, 4);
-    belief_graph.add_edge(0, 10);
+    belief_graph.add_edge(15, 16); belief_graph.add_edge(16, 15);
 
     belief_graph
 }
 
 #[test]
 fn test_sibling_extraction() {
-    let graph = create_graph_1();
+    let graph = create_graph_1(&vec![vec![0.6, 0.4], vec![1.0, 0.0], vec![0.0, 1.0]]);
     
     let siblings = graph.siblings(0, 4);
 
-    assert_eq!(siblings, vec![(4, 0.5), (10, 0.5)]);
+    assert_eq!(siblings, vec![(4, 1.0)]);
 }
 
 #[test]
 fn test_conditional_dijkstra() {
-    let graph = create_graph_1();
+    let belief_states = vec![vec![0.4, 0.6], vec![1.0, 0.0], vec![0.0, 1.0]];
+
+    let graph = create_graph_1(&belief_states);
     
     struct Funcs {}
     impl PRMFuncs<2> for Funcs {}
     
-    let dists = conditional_dijkstra(&graph, &vec![3, 9, 15], &Funcs{});
+    let dists = conditional_dijkstra(&graph, &vec![3, 10, 16], &Funcs{});
     assert!(dists[0] < dists[1]);
     assert!(dists[0] < dists[2]);
-
     assert!(dists[4] < dists[0]);
-    assert!(dists[5] < dists[4]);
-    assert!(dists[6] < dists[5]);
-    assert!(dists[5] < dists[7]);
-    assert!(dists[8] < dists[6]);
-    assert!(dists[9] < dists[8]);
 
-    assert!(dists[10] < dists[0]);
-    assert!(dists[11] < dists[10]);
-    assert!(dists[11] < dists[12]);
-    assert!(dists[13] < dists[11]);
-    assert!(dists[14] < dists[13]);
+    assert!(dists[6] < dists[5]);
+    assert!(dists[6] < dists[8]);
+    assert!(dists[7] < dists[6]);
+    assert!(dists[9] < dists[7]);
+    assert!(dists[10] < dists[9]);
+
+    assert!(dists[12] < dists[11]);
+    assert!(dists[12] < dists[13]);
+    assert!(dists[14] < dists[12]);
     assert!(dists[15] < dists[14]);
+    assert!(dists[16] < dists[15]);
+
+    // belief transition
+    assert_eq!(dists[4], belief_states[0][0] * dists[5] + belief_states[0][1] * dists[11]);
+}
+
+#[test]
+fn test_transitions() {
+    assert_eq!(transition_probability(&vec![1.0, 0.0], &vec![1.0, 0.0]), 1.0);
+    assert_eq!(transition_probability(&vec![0.0, 1.0], &vec![1.0, 0.0]), 0.0);
+
+    assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![0.4, 0.6]), 1.0);
+    assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![1.0, 0.0]), 0.4);
+    assert_eq!(transition_probability(&vec![0.5, 0.0, 0.5, 0.0], &vec![0.0, 0.5, 0.0, 0.5]), 0.0);
 }
 }

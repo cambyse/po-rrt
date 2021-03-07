@@ -15,6 +15,8 @@ use crate::prm::*;
 use crate::prm_graph::*;
 use crate::sample_space::*;
 use crate::map_io::*;
+use crate::common::*;
+use bitvec::prelude::*;
 
 use orbtk::prelude::*;
 use std::cell::Cell;
@@ -135,22 +137,47 @@ fn display(){
 }
 
 fn main() {
-    /*let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm");
+    /*
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm", 0.2);
 
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
 	}
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 2000, 100000).unwrap();
-	prm.plan().unwrap();
-    prm.react(&[0.0, -0.8], &vec![0.25, 0.25, 0.25, 0.25], 0.2).unwrap();
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	let policy = prm.plan_belief_state(&vec![0.2, 0.2, 0.2, 0.4]);
 
-    prm.print_summary();*/
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_full_graph(&prm.graph);
+	m2.draw_policy(&policy);
+    m2.save("results/test_plan_on_map2_pomdp_main.pgm");*/
+    
+    let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map4_zone_ids.pgm", 0.2);
 
-    display();
+	fn goal(state: &[f64; 2]) -> WorldMask {
+		bitvec![if (state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
+	}
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSampler::new(),
+						   &m);
+
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000, 100000).expect("graph not grown up to solution");
+	prm.print_summary();
+	let policy = prm.plan_belief_state( &vec![1.0/16.0; 16]);
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_full_graph(&prm.graph);
+	m2.draw_policy(&policy);
+	m2.save("results/test_plan_on_map4_pomdp_main.pgm");
+
+    //display();
 }
