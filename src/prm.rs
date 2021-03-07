@@ -94,6 +94,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					.map(|(id, _)| id)
 					.collect();
 
+				
 				let bwd_ids: Vec<usize> = neighbour_ids.iter()
 				.map(|&id| (id, &self.graph.nodes[id]))
 				.filter(|(_, node)| self.fns.transition_validator(new_node, node))
@@ -164,21 +165,6 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			}
 		}
 
-		// build possible edges
-		for (id, node) in self.graph.nodes.iter().enumerate() {
-			for (belief_id, _) in reachable_belief_states.iter().enumerate() {
-				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
-
-				for &child_id in &node.children {
-					let child_belief_node_id = node_to_belief_nodes[child_id][belief_id];
-
-					if parent_belief_node_id.is_some() && child_belief_node_id.is_some() {
-						belief_space_graph.add_edge(parent_belief_node_id.unwrap(), child_belief_node_id.unwrap());
-					}
-				}
-			}
-		}
-
 		// build transitions due to observations
 		for (id, node) in self.graph.nodes.iter().enumerate() {
 			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
@@ -198,6 +184,25 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 						if parent_belief_node_id.is_some() && child_belief_node_id.is_some() {
 							belief_space_graph.add_edge(parent_belief_node_id.unwrap(), child_belief_node_id.unwrap());
 						}
+					}
+				}
+			}
+		}
+
+		// build possible edges
+		for (id, node) in self.graph.nodes.iter().enumerate() {
+			for (belief_id, _) in reachable_belief_states.iter().enumerate() {
+				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
+
+				if parent_belief_node_id.is_some() && belief_space_graph.belief_nodes[parent_belief_node_id.unwrap()].children.len() > 0 {
+					continue;
+				}
+
+				for &child_id in &node.children {
+					let child_belief_node_id = node_to_belief_nodes[child_id][belief_id];
+
+					if parent_belief_node_id.is_some() && child_belief_node_id.is_some() {
+						belief_space_graph.add_edge(parent_belief_node_id.unwrap(), child_belief_node_id.unwrap());
 					}
 				}
 			}
@@ -237,7 +242,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		{
 			let mut lifo: Vec<(usize, usize)> = Vec::new(); // policy_node, belief_graph_node
 
-			policy.add_node(&self.belief_graph.belief_nodes[0].state);
+			policy.add_node(&self.belief_graph.belief_nodes[0].state, &self.belief_graph.belief_nodes[0].belief_state);
 
 			lifo.push((0, 0));
 
@@ -253,7 +258,8 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				let children_ids = self.get_best_expected_children(belief_node_id);
 
 				for child_id in children_ids {
-					let child_policy_id = policy.add_node(&self.belief_graph.belief_nodes[child_id].state);
+					let child = &self.belief_graph.belief_nodes[child_id];
+					let child_policy_id = policy.add_node(&child.state, &child.belief_state);
 					policy.add_edge(policy_node_id, child_policy_id);
 
 					if self.expected_costs_to_goals[child_id] > 0.0 {
@@ -390,11 +396,11 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 
 		// normally harmless hack (can't stay in same belief if observation received) TODO: improve
-		for belief_id in belief_to_children.clone().keys() {
+		/*for belief_id in belief_to_children.clone().keys() {
 			if *belief_id == bs_node.belief_id && belief_to_children.clone().keys().len() > 1 {
 				belief_to_children.remove(belief_id);
 			}
-		}
+		}*/
 		//
 
 		// choose the best for each belief state
@@ -433,8 +439,8 @@ use super::*;
 
 #[test]
 fn test_plan_on_map2_pomdp() {
-	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm", 0.2);
+	let mut m = Map::open("data/map2_thin.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_thin_zone_ids.pgm", 0.2);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
@@ -458,7 +464,7 @@ fn test_plan_on_map2_pomdp() {
 #[test]
 fn test_plan_on_map4_pomdp() {
 	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map4_zone_ids.pgm", 0.2);
+	m.add_zones("data/map4_zone_ids.pgm", 0.15);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
@@ -468,7 +474,7 @@ fn test_plan_on_map4_pomdp() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.075, 5.0, 1000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_state( &vec![1.0/16.0; 16]);
 

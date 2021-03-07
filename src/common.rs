@@ -100,6 +100,7 @@ pub fn assert_belief_state_validity(belief_state: &Vec<f64>) {
 
 pub struct PolicyNode<const N: usize> {
 	pub state: [f64; N],
+	pub belief_state: Vec<f64>,
 	pub parent: Option<usize>,
 	pub children: Vec<usize>,
 }
@@ -109,11 +110,12 @@ pub struct Policy<const N: usize> {
 }
 
 impl<const N: usize> Policy<N> {
-	pub fn add_node(&mut self, state: &[f64; N]) -> usize {
+	pub fn add_node(&mut self, state: &[f64; N], belief_state: &Vec<f64>) -> usize {
 		let id = self.nodes.len();
 
 		self.nodes.push(PolicyNode{
 			state: state.clone(),
+			belief_state: belief_state.clone(),
 			parent: None,
 			children: Vec::new()
 		});

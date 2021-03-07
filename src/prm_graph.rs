@@ -112,6 +112,11 @@ pub struct PRMNode<const N: usize> {
 	pub children: Vec<usize>,
 }
 
+pub struct PRMEdge {
+	pub child_id: usize,
+	pub validity: WorldMask
+}
+
 impl<const N: usize> GraphNode<N> for PRMNode<N> {
 	fn state(&self) -> &[f64; N] {
 		&self.state

@@ -159,7 +159,7 @@ fn main() {
     m2.save("results/test_plan_on_map2_pomdp_main.pgm");*/
     
     let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map4_zone_ids.pgm", 0.2);
+	m.add_zones("data/map4_zone_ids.pgm", 0.15);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
@@ -169,9 +169,9 @@ fn main() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.075, 5.0, 1000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
-	let policy = prm.plan_belief_state( &vec![1.0/16.0; 16]);
+	let policy = prm.plan_belief_state(&vec![1.0/16.0; 16] ); //&vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);

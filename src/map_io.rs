@@ -3,7 +3,7 @@ use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use crate::common::*;
 use image::{DynamicImage, GenericImageView, Luma};
 use image::DynamicImage::ImageLuma8;
-use core::f64;
+use core::{f64, panic};
 use std::vec::Vec;
 use std::collections::HashSet;
 extern crate queues;
@@ -185,7 +185,12 @@ impl Map {
 			match pixel[0] {
 				255 => {},
 				0 => {return Belief::Obstacle; },
-				_ => {					
+				_ => {	
+					let zone_index = self.get_zone_index(i as u32, j as u32).unwrap();
+					if let Belief::Zone(previous) = traversed_space {
+						if zone_index != previous {
+						panic!("multiple zone traversal not supported"); }
+					}				
 					traversed_space = Belief::Zone(self.get_zone_index(i as u32, j as u32).unwrap());
 				}
 			};
@@ -269,13 +274,23 @@ impl Map {
 
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {
 		for parent in &policy.nodes {
+
+			//if parent.children.len() == 0 {
+			//	dbg!(&parent.belief_state);
+			//}
+			println!("---");
+
 			if parent.children.len() > 1 {
 				self.draw_circle(&parent.state, self.visibility_distance / 10.0);
 			}
 
 			for &child_id in &parent.children {
 				let child = &policy.nodes[child_id];
-				self.draw_line(parent.state, child.state, 50)
+				self.draw_line(parent.state, child.state, 50);
+
+				if parent.belief_state != child.belief_state {
+					println!("transition {:?} -> {:?}", parent.belief_state, child.belief_state );
+				}
 			}
 		}
 	}
@@ -406,6 +421,12 @@ impl PRMFuncs<2> for Map {
 	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> bool {
 		let symbolic_validity = from.validity.iter().zip(&to.validity)
 		.any(|(a, b)| *a && *b);
+
+		/*let geometric_validitiy = match self.get_traversed_space(&from.state, &to.state) {
+			Belief::Obstacle => false,
+			Belief::Free => true,
+			Belief::Zone(zone_id) => { self.zone_index_to_world_mask(zone_id) == to.validity }
+		};*/
 
 		let geometric_validitiy = self.get_traversed_space(&from.state, &to.state) != Belief::Obstacle;
 
@@ -660,6 +681,16 @@ fn test_resize_image() {
 	m.save("results/tmp.pgm");
 	assert!(Path::new("results/tmp.pgm").exists());
 	fs::remove_file("results/tmp.pgm").unwrap();
+}
+
+#[test]
+fn test_traversed_zone() {
+	let mut m = Map::open("data/map2_thin.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_thin_zone_ids.pgm", 0.2);
+	
+	let space = m.get_traversed_space(&[0.55, -0.8], &[0.55, 0.3]);
+
+	assert_eq!(space, Belief::Zone(0));
 }
 
 }
