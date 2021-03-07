@@ -199,7 +199,6 @@ pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, fina
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
 	let mut dist = vec![std::f64::INFINITY; graph.n_nodes()];
-	let mut prev = vec![0; graph.n_nodes()];
 	let mut q = PriorityQueue::new();
 	
 	for &id in final_node_ids {
@@ -218,7 +217,6 @@ pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, fina
 
 			if alternative < dist[u_id] {
 				dist[u_id] = alternative;
-				prev[u_id] = u_id;
 				q.push(u_id, Priority{prio: alternative});
 			}
 		}

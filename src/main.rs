@@ -175,7 +175,8 @@ fn main() {
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+    m2.draw_full_graph(&prm.graph);
+    m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/test_plan_on_map4_pomdp_main.pgm");
 

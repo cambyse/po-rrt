@@ -293,6 +293,18 @@ impl Map {
 		}
 	}
 
+	fn draw_circle(&mut self, xy: &[f64; 2], radius: f64) {
+		for angle_step in 1..50 {
+			let angle_from = (angle_step - 1) as f64 * 2.0 * std::f64::consts::PI / 50.0;
+			let angle_to = (angle_step) as f64 * 2.0 * std::f64::consts::PI / 50.0;
+
+			let xy_from = [xy[0] + radius * angle_from.cos(), xy[1] + radius * angle_from.sin()];
+			let xy_to = [xy[0] + radius * angle_to.cos(), xy[1] + radius * angle_to.sin()];
+
+			self.draw_line(xy_from, xy_to, 100);
+		}
+	}
+	
 	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>) {
 		for from in &graph.nodes {
 			for to_id in from.children.clone() {
@@ -352,6 +364,12 @@ impl Map {
 					None => {}
 				}
 			}
+		}
+	}
+
+	pub fn draw_zones_observability(&mut self) {
+		for xy in &self.zone_positions.clone() {
+			self.draw_circle(xy, self.visibility_distance);
 		}
 	}
 } 
