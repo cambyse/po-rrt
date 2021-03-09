@@ -61,11 +61,11 @@ impl<const N: usize> Graph<N> for PRMBeliefGraph<N> {
 	fn n_nodes(&self) -> usize {
 		self.belief_nodes.len()
 	}
-	fn children(&self, id: usize) -> Vec<usize> {
-		self.belief_nodes[id].children.clone()
+	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
+		Box::new(self.belief_nodes[id].children.iter().map(|&id| id))
 	}
-	fn parents(&self, id:usize) -> Vec<usize> {
-		self.belief_nodes[id].parents.clone()
+	fn parents(&self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
+		Box::new(self.belief_nodes[id].parents.iter().map(|&id| id))
 	}
 }
 

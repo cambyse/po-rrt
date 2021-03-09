@@ -1,6 +1,7 @@
 use itertools::izip;
-use std::{iter::Zip, slice::Iter};
+use std::{iter::Zip, slice::Iter, iter::Iterator};
 use bitvec::prelude::*;
+
 
 pub fn norm1<const N: usize>(a: &[f64; N], b: &[f64; N]) -> f64 {
 	let mut d = 0.0;
@@ -42,6 +43,7 @@ pub fn pairwise_iter<T>(v: &Vec<T>) -> Zip<Iter<T>, Iter<T>> {
 
 pub type WorldMask = BitVec;
 pub type BeliefState = Vec<f64>;
+pub type NodeId = usize;
 
 pub trait GraphNode<const N: usize> {
 	fn state(&self) -> &[f64; N];
@@ -50,8 +52,8 @@ pub trait GraphNode<const N: usize> {
 pub trait Graph<const N: usize> {
 	fn node(&self, id:usize) -> &dyn GraphNode<N>;
 	fn n_nodes(&self) -> usize;
-	fn children(&self, id: usize) -> Vec<usize>;
-	fn parents(&self, id: usize) -> Vec<usize>;
+	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
+	fn parents(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
 }
 
 pub trait ObservationGraph {

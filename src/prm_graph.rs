@@ -170,11 +170,11 @@ impl<const N: usize> Graph<N> for PRMGraph<N> {
 	fn n_nodes(&self) -> usize {
 		self.nodes.len()
 	}
-	fn children(&self, id: usize) -> Vec<usize> {
-		self.nodes[id].children.clone()
+	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
+		Box::new(self.nodes[id].children.iter().map(move |&id| id))
 	}
-	fn parents(&self, id:usize) -> Vec<usize> {
-		self.nodes[id].parents.clone()
+	fn parents(&self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
+		Box::new(self.nodes[id].parents.iter().map(|&id| id))
 	}
 }
 
@@ -190,11 +190,15 @@ impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
 	fn n_nodes(&self) -> usize {
 		self.graph.n_nodes()
 	}
-	fn children(&self, id: usize) -> Vec<usize> {
-		self.graph.nodes[id].children.iter().filter(|&id| self.graph.nodes[*id].validity[self.world]).map(|&id| id).collect()
+	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
+		Box::new(self.graph.nodes[id].children.iter()
+			.filter(move |&id| self.graph.nodes[*id].validity[self.world])
+			.map(|&id| id))
 	}
-	fn parents(&self, id:usize) -> Vec<usize> {
-		self.graph.nodes[id].parents.iter().filter(|&id| self.graph.nodes[*id].validity[self.world]).map(|&id| id).collect()
+	fn parents(& self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
+		Box::new(self.graph.nodes[id].parents.iter()
+			.filter(move |&id| self.graph.nodes[*id].validity[self.world])
+			.map(|&id| id))
 	}
 }
 
