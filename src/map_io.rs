@@ -275,10 +275,7 @@ impl Map {
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {
 		for parent in &policy.nodes {
 
-			//if parent.children.len() == 0 {
-			//	dbg!(&parent.belief_state);
-			//}
-			println!("---");
+			//println!("---");
 
 			if parent.children.len() > 1 {
 				self.draw_circle(&parent.state, self.visibility_distance / 10.0);
@@ -288,9 +285,9 @@ impl Map {
 				let child = &policy.nodes[child_id];
 				self.draw_line(parent.state, child.state, 50);
 
-				if parent.belief_state != child.belief_state {
-					println!("transition {:?} -> {:?}", parent.belief_state, child.belief_state );
-				}
+				//if parent.belief_state != child.belief_state {
+				//	println!("transition {:?} -> {:?}", parent.belief_state, child.belief_state );
+				//}
 			}
 		}
 	}

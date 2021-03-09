@@ -439,8 +439,8 @@ use super::*;
 
 #[test]
 fn test_plan_on_map2_pomdp() {
-	let mut m = Map::open("data/map2_thin.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_thin_zone_ids.pgm", 0.2);
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm", 0.2);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
