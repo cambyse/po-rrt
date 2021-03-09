@@ -310,7 +310,7 @@ impl Map {
 	}
 
 	fn draw_circle(&mut self, xy: &[f64; 2], radius: f64) {
-		for angle_step in 1..50 {
+		for angle_step in 1..51 {
 			let angle_from = (angle_step - 1) as f64 * 2.0 * std::f64::consts::PI / 50.0;
 			let angle_to = (angle_step) as f64 * 2.0 * std::f64::consts::PI / 50.0;
 
