@@ -165,7 +165,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			}
 		}
 
-		// build transitions due to observations
+		// build transitions due to observations (observation edges)
 		for (id, node) in self.graph.nodes.iter().enumerate() {
 			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
 				let children_belief_states = self.fns.observe(&node.state, &belief_state);
@@ -181,28 +181,36 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 						let child_belief_state_id = belief_space_graph.belief_id(&child_belief_state);
 						let child_belief_node_id = node_to_belief_nodes[id][child_belief_state_id];
 
-						if parent_belief_node_id.is_some() && child_belief_node_id.is_some() {
-							belief_space_graph.add_edge(parent_belief_node_id.unwrap(), child_belief_node_id.unwrap());
+						match (parent_belief_node_id, child_belief_node_id) {
+							(Some(parent_id), Some(child_id)) => {
+								belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Observation;
+								belief_space_graph.add_edge(parent_id, child_id);
+							},
+							_ => {}
 						}
 					}
 				}
 			}
 		}
 
-		// build possible edges
+		// build possible geometric edges (action edges)
 		for (id, node) in self.graph.nodes.iter().enumerate() {
 			for (belief_id, _) in reachable_belief_states.iter().enumerate() {
 				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
 
-				if parent_belief_node_id.is_some() && belief_space_graph.belief_nodes[parent_belief_node_id.unwrap()].children.len() > 0 {
+				if parent_belief_node_id.is_some() && belief_space_graph.belief_nodes[parent_belief_node_id.unwrap()].node_type == BeliefNodeType::Observation {
 					continue;
 				}
 
 				for &child_id in &node.children {
 					let child_belief_node_id = node_to_belief_nodes[child_id][belief_id];
 
-					if parent_belief_node_id.is_some() && child_belief_node_id.is_some() {
-						belief_space_graph.add_edge(parent_belief_node_id.unwrap(), child_belief_node_id.unwrap());
+					match (parent_belief_node_id, child_belief_node_id) {
+						(Some(parent_id), Some(child_id)) => {
+							belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Action;
+							belief_space_graph.add_edge(parent_id, child_id);
+						},
+						_ => {}
 					}
 				}
 			}
@@ -451,6 +459,7 @@ fn test_plan_on_map2_pomdp() {
 						   &m);
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.print_summary();
 	let policy = prm.plan_belief_state(&vec![0.2, 0.2, 0.2, 0.4]);
 
 	let mut m2 = m.clone();
