@@ -134,7 +134,7 @@ pub fn conditional_dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & (impl G
 
             let mut alternative = 0.0;
             for (vv_id, p) in graph.siblings(u_id, v_id) {
-                let vv = graph.node(vv_id);
+                let vv = &graph.node(vv_id);
                 alternative += p * (m.cost_evaluator(u.state(), vv.state()) + dist[vv_id]);
             }
             
