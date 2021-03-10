@@ -124,6 +124,9 @@ pub fn conditional_dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMBelie
                     alternative += p * (m.cost_evaluator(u.state(), vv.state()) + dist[vv_id]);
                 }
             }
+            else {
+                panic!("node type should be know at this stage!");
+            }
 
 			if alternative < dist[u_id] {
                 dist[u_id] = alternative;

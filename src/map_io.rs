@@ -685,7 +685,7 @@ fn test_traversed_zone() {
 	let mut m = Map::open("data/map2_thin.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_thin_zone_ids.pgm", 0.2);
 	
-	let space = m.get_traversed_space(&[0.55, -0.8], &[0.55, 0.3]);
+	let space = m.get_traversed_space(&[0.55, -0.8], &[0.55, -0.3]);
 
 	assert_eq!(space, Belief::Zone(0));
 }
