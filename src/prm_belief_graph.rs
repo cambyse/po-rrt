@@ -9,12 +9,20 @@ use crate::prm_reachability::*;
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
 
+#[derive(PartialEq)]
+pub enum BeliefNodeType {
+    Unknown,
+    Action,
+    Observation,
+}
+
 pub struct PRMBeliefNode<const N: usize> {
 	pub state: [f64; N],
     pub belief_state: BeliefState,
     pub belief_id: usize,
 	pub parents: Vec<usize>,
     pub children: Vec<usize>,
+    pub node_type: BeliefNodeType,
 }
 
 
@@ -39,6 +47,7 @@ impl<const N: usize> PRMBeliefGraph<N> {
                 belief_id,
                 parents: Vec::new(),
                 children: Vec::new(),
+                node_type: BeliefNodeType::Unknown,
             }
         );
         id
@@ -75,15 +84,18 @@ impl<const N: usize> ObservationGraph for PRMBeliefGraph<N> {
         let mut siblings: Vec<(usize, f64)> = Vec::new();
 
         let parent = &self.belief_nodes[parent_id];
-        let witness = &self.belief_nodes[id];
-        for &child_id in &parent.children {
-            let child = &self.belief_nodes[child_id];
 
-            if witness.state == child.state {
-                siblings.push((child_id, transition_probability(&parent.belief_state, &child.belief_state)))
+        match parent.node_type {
+            BeliefNodeType::Action => siblings.push((id, 1.0)),
+            BeliefNodeType::Observation => {
+                for &child_id in &parent.children {
+                    let child = &self.belief_nodes[child_id];
+                    siblings.push((child_id, transition_probability(&parent.belief_state, &child.belief_state)))
+                }
             }
+            _ => {panic!("belief node type should be determined at this stage");}
         }
-
+       
         siblings
     }
 }
@@ -167,7 +179,7 @@ fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> PRMBeliefGraph<2> {
      |
     (4)
 
-    bs: [0.5, 0.5]
+    bs: [p, 1.0 - p]
     */
 
     /*    
@@ -249,9 +261,8 @@ fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> PRMBeliefGraph<2> {
 fn test_sibling_extraction() {
     let graph = create_graph_1(&vec![vec![0.6, 0.4], vec![1.0, 0.0], vec![0.0, 1.0]]);
     
-    let siblings = graph.siblings(0, 4);
-
-    assert_eq!(siblings, vec![(4, 1.0)]);
+    assert_eq!(graph.siblings(0, 4), vec![(4, 1.0)]);   // leads itself if no observation
+    assert_eq!(graph.siblings(4, 5), vec![(5, 0.6), (11, 0.4)]);
 }
 
 #[test]

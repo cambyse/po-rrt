@@ -593,7 +593,7 @@ fn test_map_2_observation_model_in_zones() {
 	assert_eq!(posteriors[0], vec![0.5, 0.0, 0.5, 0.0]); // zone 0 close
 	assert_eq!(posteriors[1], vec![0.0, 0.5, 0.0, 0.5]); // zone 0 open
 
-	// perculiar belief state transitions
+	// peculiar belief state transitions
 	let posteriors = map.observe(&[0.54, -0.5], &vec![1.0, 0.0, 0.0, 0.0]); // already in open belief state!
 	assert_eq!(posteriors, vec![vec![1.0, 0.0, 0.0, 0.0]]);
 

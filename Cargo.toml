@@ -36,3 +36,7 @@ harness = false
 [[bench]]
 name = "bitvec"
 harness = false
+
+[[bench]]
+name = "box_vs_copy"
+harness = false
