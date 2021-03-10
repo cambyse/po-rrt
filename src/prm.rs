@@ -157,7 +157,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		// build nodes
 		for (id, node) in self.graph.nodes.iter().enumerate() {
 			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
-				let belief_node_id = belief_space_graph.add_node(node.state.clone(), belief_state.clone(), belief_id);
+				let belief_node_id = belief_space_graph.add_node(node.state.clone(), belief_state.clone(), belief_id, BeliefNodeType::Unknown);
 
 				if is_compatible(belief_state, &node.validity) {
 					node_to_belief_nodes[id][belief_id] = Some(belief_node_id);

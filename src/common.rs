@@ -56,10 +56,6 @@ pub trait Graph<const N: usize> {
 	fn parents(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
 }
 
-pub trait ObservationGraph {
-	fn siblings(&self, parent_id: usize, id: usize) -> Vec<(usize, f64)>; // in case of observation branching, returns the siblings obtained from other observations along with their probability
-}
-
 use std::cmp::Ordering;
 
 pub struct Priority{
