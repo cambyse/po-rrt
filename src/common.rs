@@ -1,7 +1,53 @@
 use itertools::izip;
 use std::{iter::Zip, slice::Iter, iter::Iterator};
 use bitvec::prelude::*;
+use std::cmp::Ordering;
 
+pub type WorldMask = BitVec;
+pub type BeliefState = Vec<f64>;
+pub type NodeId = usize;
+
+pub trait GraphNode<const N: usize> {
+	fn state(&self) -> &[f64; N];
+}
+
+pub trait Graph<const N: usize> {
+	fn node(&self, id:usize) -> &dyn GraphNode<N>;
+	fn n_nodes(&self) -> usize;
+	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
+	fn parents(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
+}
+
+pub struct PolicyNode<const N: usize> {
+	pub state: [f64; N],
+	pub belief_state: Vec<f64>,
+	pub parent: Option<usize>,
+	pub children: Vec<usize>,
+}
+
+pub struct Policy<const N: usize> {
+	pub nodes: Vec<PolicyNode<N>>
+}
+
+impl<const N: usize> Policy<N> {
+	pub fn add_node(&mut self, state: &[f64; N], belief_state: &Vec<f64>) -> usize {
+		let id = self.nodes.len();
+
+		self.nodes.push(PolicyNode{
+			state: state.clone(),
+			belief_state: belief_state.clone(),
+			parent: None,
+			children: Vec::new()
+		});
+
+		id
+	}
+
+	pub fn add_edge(&mut self, parent_id: usize, child_id: usize) {
+		self.nodes[parent_id].children.push(child_id);
+		self.nodes[child_id].parent = Some(parent_id);
+	}
+}
 
 pub fn norm1<const N: usize>(a: &[f64; N], b: &[f64; N]) -> f64 {
 	let mut d = 0.0;
@@ -41,23 +87,6 @@ pub fn pairwise_iter<T>(v: &Vec<T>) -> Zip<Iter<T>, Iter<T>> {
 	v[0..v.len()-1].iter().zip(&v[1..])
 }
 
-pub type WorldMask = BitVec;
-pub type BeliefState = Vec<f64>;
-pub type NodeId = usize;
-
-pub trait GraphNode<const N: usize> {
-	fn state(&self) -> &[f64; N];
-}
-
-pub trait Graph<const N: usize> {
-	fn node(&self, id:usize) -> &dyn GraphNode<N>;
-	fn n_nodes(&self) -> usize;
-	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
-	fn parents(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
-}
-
-use std::cmp::Ordering;
-
 pub struct Priority{
 	pub prio: f64
 }
@@ -94,35 +123,4 @@ pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
 
 pub fn assert_belief_state_validity(belief_state: &Vec<f64>) {
 	assert!((belief_state.iter().fold(0.0, |s, p| p + s) - 1.0).abs() < 0.000001);
-}
-
-pub struct PolicyNode<const N: usize> {
-	pub state: [f64; N],
-	pub belief_state: Vec<f64>,
-	pub parent: Option<usize>,
-	pub children: Vec<usize>,
-}
-
-pub struct Policy<const N: usize> {
-	pub nodes: Vec<PolicyNode<N>>
-}
-
-impl<const N: usize> Policy<N> {
-	pub fn add_node(&mut self, state: &[f64; N], belief_state: &Vec<f64>) -> usize {
-		let id = self.nodes.len();
-
-		self.nodes.push(PolicyNode{
-			state: state.clone(),
-			belief_state: belief_state.clone(),
-			parent: None,
-			children: Vec::new()
-		});
-
-		id
-	}
-
-	pub fn add_edge(&mut self, parent_id: usize, child_id: usize) {
-		self.nodes[parent_id].children.push(child_id);
-		self.nodes[child_id].parent = Some(parent_id);
-	}
 }

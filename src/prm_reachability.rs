@@ -7,12 +7,13 @@ pub struct Reachability {
 	validity: Vec<WorldMask>,
 	reachability: Vec<WorldMask>,
 	final_node_ids: Vec<usize>,
-	finality: Vec<WorldMask>
+	finality: Vec<WorldMask>,
+	n_worlds: usize
 }
 
 impl Reachability {
 	pub fn new() -> Self {
-		Self{ validity: Vec::new(), reachability: Vec::new(), final_node_ids: Vec::new(), finality: Vec::new() }
+		Self{ validity: Vec::new(), reachability: Vec::new(), final_node_ids: Vec::new(), finality: Vec::new(), n_worlds: 0 }
 	}
 
 	pub fn set_root(&mut self, validity: WorldMask) {
@@ -23,6 +24,7 @@ impl Reachability {
 	pub fn add_node(&mut self, validity: WorldMask) {
 		self.validity.push(validity.clone());
 		self.reachability.push(bitvec![0; validity.len()]);
+		self.n_worlds = validity.len();
 	}
 
 	pub fn add_final_node(&mut self, id: usize, finality: WorldMask) {
@@ -61,6 +63,18 @@ impl Reachability {
 			.collect()
 	}
 
+	pub fn final_node_ids(&self) -> Vec<usize> {
+		let mut final_node_ids = Vec::new();
+		for world in 0..self.n_worlds {
+			for final_id in self.final_nodes_for_world(world) {
+				if ! final_node_ids.contains(&final_id) {
+					final_node_ids.push(final_id);
+				}
+			}
+		}
+		final_node_ids
+	}
+
 	pub fn is_final_set_complete(&self) -> bool {
 		if self.final_node_ids.is_empty() { return false; }
 
@@ -74,9 +88,6 @@ impl Reachability {
 				finality.set(i, finality_i || node_reachability[i] && node_finality[i]);
 			}
 		}
-		/*self.final_node_ids.iter().skip(0)
-			.fold(first_finality, |finality, &id| finality | (self.reachability[id].clone() ) )
-			.all()*/
 
 		finality.all()
 	}
