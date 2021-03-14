@@ -25,13 +25,6 @@ pub struct PRMBeliefNode<const N: usize> {
     pub node_type: BeliefNodeType,
 }
 
-
-impl<const N: usize> GraphNode<N> for PRMBeliefNode<N> {
-	fn state(&self) -> &[f64; N] {
-		&self.state
-	}
-}
-
 pub struct PRMBeliefGraph<const N: usize> {
     pub belief_nodes: Vec<PRMBeliefNode<N>>,
     pub reachable_belief_states: Vec<Vec<f64>>
@@ -100,13 +93,13 @@ pub fn conditional_dijkstra<F: PRMFuncs<N>, const N: usize>(graph: &PRMBeliefGra
             let mut alternative = 0.0;
             if u.node_type == BeliefNodeType::Action {
                 let v = &graph.belief_nodes[v_id];
-                alternative += m.cost_evaluator(u.state(), v.state()) + dist[v_id]
+                alternative += m.cost_evaluator(&u.state, &v.state) + dist[v_id]
             }
             else if u.node_type == BeliefNodeType::Observation {
                 for &vv_id in &u.children {
                     let vv = &graph.belief_nodes[vv_id];
                     let p = transition_probability(&u.belief_state, &vv.belief_state);
-                    alternative += p * (m.cost_evaluator(u.state(), vv.state()) + dist[vv_id]);
+                    alternative += p * (m.cost_evaluator(&u.state, &vv.state) + dist[vv_id]);
                 }
             }
             else {

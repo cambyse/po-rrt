@@ -648,33 +648,6 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 }
 }
 
-/* N = nombre de mondes
-* PLAN()
-* Option 1/ Pour chaque monde, calculer la distance à l'objectif de chaque node (Value iteration)
-* 	-> avantage : valeurs valables partout
-*   -> long calcul offline - scalability?
-*   d(n) = min( d(m, n) + d(m) for m in children(n) )
-*
-* Option 2/ Au runtime, calculer meilleur chemin pour chacun des mondes (e.g. A*) et prendre decision en pondérant chacunes des options 
-*	-> avantage : étape offline moins longue
-*   -> possible à l'exécution ? (assez rapide?)
-*
-* Option 3/ Monte Carlo -> N
-* 
-* Option 4/ N mondes: RRT start N fois
-* 
-*
-* EXECUTION()
-* - Robot a un belief state : probabilité d'être dans chaque monde
-* - Deduit le chemin a suivre en cherchant en calculant l'espérance de la distance à l'objectif de chacun de ces enfants
-*
-* Belief state : [0.25, 0.25, 0.25, 0.25] 
-* 
-*
-* QUESTIONS:
-* - Quand arreter de faire croitre le graph et quand même avoir une solution our chaque monde??
-*/
-
 // Compresser pour avoir N mondes même pour des domaines où le nombre de mondes explose
 
 // Done:
@@ -691,4 +664,4 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 // TODO:
 // - avoid copies
 // - optimize nearest neighbor (avoid sqrt)
-// - multithreaded dijkstra
+// - field of view observation model
