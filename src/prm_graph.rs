@@ -56,7 +56,7 @@ impl SerializablePRMGraph {
 	pub fn from_prm_graph_(prm_graph: &PRMGraph<2>) -> SerializablePRMGraph {
 		let nodes = &prm_graph.nodes;
 		SerializablePRMGraph {
-			nodes: nodes.into_iter().map(|node| SerializablePRMNode::from_prm_node(&node)).collect()
+			nodes: nodes.iter().map(|node| SerializablePRMNode::from_prm_node(&node)).collect()
 		}
 	}
 
@@ -95,12 +95,12 @@ pub trait PRMFuncs<const N: usize> {
 		norm2(a,b)
 	}
 
-	fn reachable_belief_states(&self, belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
-		vec![belief_state.clone()]
+	fn reachable_belief_states(&self, belief_state: &BeliefState) -> Vec<BeliefState> {
+		vec![belief_state.to_owned()]
 	}
 
-	fn observe(&self, _state: &[f64; N], belief_state: &Vec<f64>) -> Vec<Vec<f64>> {
-		vec![belief_state.clone()]
+	fn observe(&self, _state: &[f64; N], belief_state: &BeliefState) -> Vec<BeliefState> {
+		vec![belief_state.to_owned()]
 	}
 }
 
@@ -146,12 +146,6 @@ impl<const N: usize> PRMGraph<N> {
 		self.nodes[to_id].parents.retain(|&id|{id != from_id});
 	}
 
-	pub fn get_path_to(&self, _: usize) -> Vec<[f64; N]> {
-		let path = Vec::new();
-
-		path
-	}
-
 	pub fn print_summary(&self) {
 		let (sum, max) = self.nodes.iter()
 			.map(|node| node.children.len())
@@ -171,10 +165,10 @@ impl<const N: usize> Graph<N> for PRMGraph<N> {
 		self.nodes.len()
 	}
 	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.nodes[id].children.iter().map(move |&id| id))
+		Box::new(self.nodes[id].children.iter().copied())
 	}
 	fn parents(&self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.nodes[id].parents.iter().map(|&id| id))
+		Box::new(self.nodes[id].parents.iter().copied())
 	}
 }
 
@@ -193,18 +187,18 @@ impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
 	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
 		Box::new(self.graph.nodes[id].children.iter()
 			.filter(move |&id| self.graph.nodes[*id].validity[self.world])
-			.map(|&id| id))
+			.copied())
 	}
 	fn parents(& self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
 		Box::new(self.graph.nodes[id].parents.iter()
 			.filter(move |&id| self.graph.nodes[*id].validity[self.world])
-			.map(|&id| id))
+			.copied())
 	}
 }
 
 /****************************Dijkstra******************************/
 
-pub fn dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_node_ids: &Vec<usize>, m: &F) -> Vec<f64> {
+pub fn dijkstra<F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_node_ids: &[usize], m: &F) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
 	let mut dist = vec![std::f64::INFINITY; graph.n_nodes()];
@@ -256,8 +250,8 @@ pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &Vec
 			let mut belief: Vec<minilp::Variable> = Vec::new();
 			
 			// add variables, and force belief to 0 in infeasible worlds
-			for world in 0..n_worlds {
-				if world_validities[world] {
+			for &world_validity in world_validities.iter().take(n_worlds) {
+				if world_validity {
 					belief.push(problem.add_var(1.0, (0.0, 1.0)));
 				}
 				else {

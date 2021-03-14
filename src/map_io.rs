@@ -50,7 +50,7 @@ impl Map {
 
 
 	fn open_image(filepath : &str) -> image::GrayImage {
-		let img = image::open(filepath).expect(&format!("Impossible to open image: {}", filepath));
+		let img = image::open(filepath).unwrap_or_else(|_| panic!("Impossible to open image: {}", filepath));
 
 		match img {
 			ImageLuma8(gray_img) => gray_img,
@@ -77,19 +77,16 @@ impl Map {
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
 				let z = self.get_zone_index(i, j);
-				match z {
-					Some(id) => {
-						if id > max_id {
-							max_id = id;
-						}
-					},
-					None => {}
-				}	
+				if let Some(id) = z {
+					if id > max_id {
+						max_id = id;
+					}
+				} 	
 			}
 		}
 		
 		self.n_zones = max_id + 1;
-		self.n_worlds = (2 as u32).pow(self.n_zones as u32) as usize;
+		self.n_worlds = (2_u32).pow(self.n_zones as u32) as usize;
 	}
 
 	pub fn init_zone_positions(&mut self) {
@@ -97,12 +94,9 @@ impl Map {
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
 				let z = self.get_zone_index(i, j);
-				match z {
-					Some(id) => {
-						zone_to_pixels[id].push([i, j]);
-					},
-					None => {}
-				}	
+				if let Some(id) = z {
+					zone_to_pixels[id].push([i, j]);
+				}  	
 			}
 		}
 		
@@ -199,21 +193,21 @@ impl Map {
 		traversed_space
 	}
 
-	fn get_successor_belief_states(&self, belief_state: &Vec<f64>, zone_id: usize) -> Vec<Vec<f64>> {
+	fn get_successor_belief_states(&self, belief_state: &BeliefState, zone_id: usize) -> Vec<Vec<f64>> {
 		let mut output_beliefs: Vec<Vec<f64>> = Vec::new();
 
 		fn normalize(belief: &mut Vec<f64>) {
 			let sum = belief.iter().fold(0.0, |sum, p| sum + p );
 
 			for p in belief {
-				*p = *p / sum;
+				*p /= sum;
 			}
 		}
 
 		let mask = &self.zones_to_worlds[zone_id];
 
-		// assum closed
-		let mut belief_close = belief_state.clone();
+		// assume closed
+		let mut belief_close = belief_state.to_owned();
 		for w in 0..mask.len() {
 			belief_close[w] = if mask[w] { 0.0 } else { belief_state[w] };
 		}
@@ -223,7 +217,7 @@ impl Map {
 		}
 
 		// assume open
-		let mut belief_open = belief_state.clone();
+		let mut belief_open = belief_state.to_owned();
 		for w in 0..mask.len() {
 			belief_open[w] = if mask[w] { belief_state[w] } else { 0.0 };
 		}
@@ -372,13 +366,10 @@ impl Map {
 			for j in 0..self.zones.as_ref().unwrap().width() {
 				let z = self.get_zone_index(i, j);
 
-				match z {
-					Some(zone_id) => {
-							let color = if self.zones_to_worlds[zone_id][world_id] { 255 } else { 0 };
-							self.img.put_pixel(j, i, Luma([color]));
-					},
-					None => {}
-				}
+				if let Some(zone_id) = z {
+					let color = if self.zones_to_worlds[zone_id][world_id] { 255 } else { 0 };
+					self.img.put_pixel(j, i, Luma([color]));
+				}	
 			}
 		}
 	}
@@ -438,7 +429,7 @@ impl PRMFuncs<2> for Map {
 		lifo.push((belief_state.clone(), (0..self.n_zones).collect()));
 
 		
-		while lifo.len() > 0 {
+		while !lifo.is_empty() {
 			let (belief, zones_to_check) = lifo.pop().unwrap();
 
 			for &zone_id in &zones_to_check {
@@ -464,13 +455,13 @@ impl PRMFuncs<2> for Map {
 
 		for zone_id in 0..self.n_zones {
 			if norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
-				if output_beliefs.len() > 0 { panic!("zone overlap not yet supported"); }
+				if !output_beliefs.is_empty() { panic!("zone overlap not yet supported"); }
 
 				output_beliefs = self.get_successor_belief_states(belief_state, zone_id);
 			}
 		}
 
-		if output_beliefs.len() == 0 {
+		if output_beliefs.is_empty() {
 			output_beliefs.push(belief_state.clone());
 		}
 

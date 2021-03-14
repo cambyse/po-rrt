@@ -63,33 +63,18 @@ impl<const N: usize> PRMBeliefGraph<N> {
     }
 }
 
-impl<const N: usize> Graph<N> for PRMBeliefGraph<N> {
-	fn node(&self, id:usize) -> &dyn GraphNode<N> {
-		&self.belief_nodes[id]
-	}
-	fn n_nodes(&self) -> usize {
-		self.belief_nodes.len()
-	}
-	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.belief_nodes[id].children.iter().map(|&id| id))
-	}
-	fn parents(&self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.belief_nodes[id].parents.iter().map(|&id| id))
-	}
-}
-
-pub fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -> f64 {
+pub fn transition_probability(parent_bs: &BeliefState, child_bs: &[f64]) -> f64 {
     child_bs.iter().zip(parent_bs).fold(0.0, |s, (p, q)| s + if *p > 0.0 { *q } else { 0.0 } )
 }
 
-pub fn conditional_dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMBeliefGraph<N>, final_node_ids: &Vec<usize>, m: &F) -> Vec<f64> {
+pub fn conditional_dijkstra<F: PRMFuncs<N>, const N: usize>(graph: &PRMBeliefGraph<N>, final_node_ids: &[usize], m: &F) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
-    let mut dist = vec![std::f64::INFINITY; graph.n_nodes()];
+    let mut dist = vec![std::f64::INFINITY; graph.belief_nodes.len()];
 	let mut q = PriorityQueue::new();
     
     // debug
-    println!("number of belief nodes:{}", graph.n_nodes());
+    println!("number of belief nodes:{}", graph.belief_nodes.len());
     // 
 
 	for &id in final_node_ids {
@@ -109,7 +94,7 @@ pub fn conditional_dijkstra<'a, F: PRMFuncs<N>, const N: usize>(graph: &PRMBelie
         }
         //
 
-		for u_id in graph.parents(v_id) {
+		for &u_id in &graph.belief_nodes[v_id].parents {
             let u = &graph.belief_nodes[u_id];
 
             let mut alternative = 0.0;

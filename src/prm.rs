@@ -101,7 +101,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				let bwd_ids: Vec<usize> = neighbour_ids.iter()
 				.map(|&id| (id, &self.graph.nodes[id]))
 				.filter(|(_, node)| self.fns.transition_validator(new_node, node))
-				.map(|(id, _)| id.clone())
+				.map(|(id, _)| id)
 				.collect();
 							
 				for &id in &fwd_ids {
@@ -134,7 +134,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
-	pub fn plan_belief_state(&mut self, start_belief_state: &Vec<f64>) -> Policy<N> {
+	pub fn plan_belief_state(&mut self, start_belief_state: &BeliefState) -> Policy<N> {
 		assert_belief_state_validity(start_belief_state);
 		
 		println!("build belief graph..");
@@ -163,7 +163,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		// build nodes
 		for (id, node) in self.graph.nodes.iter().enumerate() {
 			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
-				let belief_node_id = belief_space_graph.add_node(node.state.clone(), belief_state.clone(), belief_id, BeliefNodeType::Unknown);
+				let belief_node_id = belief_space_graph.add_node(node.state, belief_state.clone(), belief_id, BeliefNodeType::Unknown);
 
 				if is_compatible(belief_state, &node.validity) {
 					node_to_belief_nodes[id][belief_id] = Some(belief_node_id);
@@ -187,12 +187,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 						let child_belief_state_id = belief_space_graph.belief_id(&child_belief_state);
 						let child_belief_node_id = node_to_belief_nodes[id][child_belief_state_id];
 
-						match (parent_belief_node_id, child_belief_node_id) {
-							(Some(parent_id), Some(child_id)) => {
-								belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Observation;
-								belief_space_graph.add_edge(parent_id, child_id);
-							},
-							_ => {}
+						if let (Some(parent_id), Some(child_id)) = (parent_belief_node_id, child_belief_node_id) {
+							belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Observation;
+							belief_space_graph.add_edge(parent_id, child_id);
 						}
 					}
 				}
@@ -211,12 +208,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				for &child_id in &node.children {
 					let child_belief_node_id = node_to_belief_nodes[child_id][belief_id];
 
-					match (parent_belief_node_id, child_belief_node_id) {
-						(Some(parent_id), Some(child_id)) => {
-							belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Action;
-							belief_space_graph.add_edge(parent_id, child_id);
-						},
-						_ => {}
+					if let (Some(parent_id), Some(child_id)) = (parent_belief_node_id, child_belief_node_id) {
+						belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Action;
+						belief_space_graph.add_edge(parent_id, child_id);
 					}
 				}
 			}
@@ -242,7 +236,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	pub fn extract_policy(&self) -> Policy<N> {
-		if self.belief_graph.n_nodes() == 0 {
+		if self.belief_graph.belief_nodes.is_empty() {
 			panic!("no belief state graph!");
 		}
 
@@ -253,7 +247,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		lifo.push((0, 0));
 
-		while lifo.len() > 0 {
+		while !lifo.is_empty() {
 			let (policy_node_id, belief_node_id) = lifo.pop().unwrap();
 
 			//println!("build from:{}, state:{:?}, bs:{:?}, expected_cost:{}",
@@ -285,7 +279,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			if final_nodes.is_empty() {
 				return Err(&"We should have final node ids for each world")
 			}
-			self.cost_to_goals[world] = dijkstra(&PRMGraphWorldView{graph: &self.graph, world: world}, &final_nodes, self.fns);
+			self.cost_to_goals[world] = dijkstra(&PRMGraphWorldView{graph: &self.graph, world}, &final_nodes, self.fns);
 		}
 
 		Ok(())
@@ -298,7 +292,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		let mut paths : Vec<Vec<[f64; N]>> = vec![Vec::new(); self.n_worlds];
 		for world in 0..self.n_worlds {
 			paths[world] = common_path.clone();
-			paths[world].extend(self.get_path(id, world).expect("path should be succesfully extracted at this stage, since each world has final nodes"));
+			paths[world].extend(self.get_path(id, world));
 		}
 
 		Ok(paths)
@@ -308,7 +302,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		get_policy_graph(&self.graph, &self.cost_to_goals)
 	}
 
-	fn get_common_path(&self, start_id:usize, belief_state: &Vec<f64>, common_horizon: f64) -> Result<(Vec<[f64; N]>, usize), &'static str> {
+	fn get_common_path(&self, start_id:usize, belief_state: &BeliefState, common_horizon: f64) -> Result<(Vec<[f64; N]>, usize), &'static str> {
 		if belief_state.len() != self.n_worlds {
 			return Err("belief state size should match the number of worlds")
 		}
@@ -332,7 +326,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		Ok((path, id))
 	}
 
-	fn get_path(&self, start_id:usize, world: usize) -> Result<Vec<[f64; N]>, &'static str> {
+	fn get_path(&self, start_id:usize, world: usize) -> Vec<[f64; N]> {
 		let mut path: Vec<[f64; N]> = Vec::new();
 
 		let mut id = start_id;
@@ -342,7 +336,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			id = self.get_best_child(id, world);
 		}
 
-		Ok(path)
+		path
 	}
 
 	pub fn print_summary(&self) {
@@ -350,13 +344,14 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.graph.print_summary();
 	}
 
-	fn get_best_expected_child(&self, node_id: usize, belief_state: &Vec<f64>) -> (usize, f64) {
+	fn get_best_expected_child(&self, node_id: usize, belief_state: &BeliefState) -> (usize, f64) {
 		let node = &self.graph.nodes[node_id]; 
 		let mut best_child_id = 0;
 		let mut smallest_expected_cost = std::f64::INFINITY;
 
 		for child_id in &node.children {
 			let mut child_expected_cost = 0.0;
+
 			for world in 0..self.n_worlds {
 				child_expected_cost += self.cost_to_goals[world][*child_id] * belief_state[world];
 			}
@@ -393,11 +388,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let child = &self.belief_graph.belief_nodes[child_id];
 
 			//println!("child:{}, belief_state:{:?}", child_id, child.belief_state);
-
-			if !belief_to_children.contains_key(&child.belief_id) {
-				belief_to_children.insert(child.belief_id, Vec::new());
-			}
-			
+			belief_to_children.entry(child.belief_id).or_insert_with(Vec::new);
 			belief_to_children.get_mut(&child.belief_id).unwrap().push((child_id, self.expected_costs_to_goals[child_id]));
 		}
 
@@ -614,7 +605,7 @@ fn test_build_belief_graph() {
 	prm.final_node_ids.push(5);
 	//
 
-	let policy = prm.plan_belief_state(&vec![0.5, 0.5]);	
+	let _policy = prm.plan_belief_state(&vec![0.5, 0.5]);	
 	assert_eq!(prm.belief_graph.belief_nodes[6].children, vec![7, 8]); // observation transitions
 	assert!(!prm.belief_graph.belief_nodes[7].children.contains(&6)); // observation is irreversible
 	assert!(!prm.belief_graph.belief_nodes[8].children.contains(&6)); // observation is irreversible

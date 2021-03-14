@@ -55,7 +55,7 @@ impl<'a, const N: usize> RRTTree<'a, N> {
 		}
 
 		let compute_distance_from_root = |mut _node_id: usize| {
-			return 0.0;
+			0.0
 			/*
 			let mut cost = 0.0;
 			while node_id != 0 {

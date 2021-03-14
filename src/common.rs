@@ -30,11 +30,11 @@ pub struct Policy<const N: usize> {
 }
 
 impl<const N: usize> Policy<N> {
-	pub fn add_node(&mut self, state: &[f64; N], belief_state: &Vec<f64>) -> usize {
+	pub fn add_node(&mut self, state: &[f64; N], belief_state: &BeliefState) -> usize {
 		let id = self.nodes.len();
 
 		self.nodes.push(PolicyNode{
-			state: state.clone(),
+			state: *state,
 			belief_state: belief_state.clone(),
 			parent: None,
 			children: Vec::new()
@@ -83,7 +83,7 @@ pub fn steer<const N: usize>(from: &[f64;N], to: &mut [f64;N], max_step: f64) {
 	}
 }
 
-pub fn pairwise_iter<T>(v: &Vec<T>) -> Zip<Iter<T>, Iter<T>> {
+pub fn pairwise_iter<T>(v: &[T]) -> Zip<Iter<T>, Iter<T>> {
 	v[0..v.len()-1].iter().zip(&v[1..])
 }
 
@@ -121,6 +121,6 @@ pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
 	true
 }
 
-pub fn assert_belief_state_validity(belief_state: &Vec<f64>) {
+pub fn assert_belief_state_validity(belief_state: &BeliefState) {
 	assert!((belief_state.iter().fold(0.0, |s, p| p + s) - 1.0).abs() < 0.000001);
 }

@@ -31,8 +31,7 @@ impl<const N: usize> ContinuousSampler<N> {
 		for (v, l, u) in izip!(s.iter_mut(), self.low.iter(), self.up.iter()) {
 			*v = self.rng.gen_range(*l..*u);
 		}
-
-		return s;	
+		s	
 	}
 }
 
