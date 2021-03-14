@@ -72,7 +72,7 @@ impl Map {
 		}
 	}
 
-	pub fn init_zone_ids(&mut self) {
+	fn init_zone_ids(&mut self) {
 		let mut max_id = 0;
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
@@ -89,7 +89,7 @@ impl Map {
 		self.n_worlds = (2_u32).pow(self.n_zones as u32) as usize;
 	}
 
-	pub fn init_zone_positions(&mut self) {
+    fn init_zone_positions(&mut self) {
 		let mut zone_to_pixels: Vec<Vec<[u32; 2]>> = vec![Vec::new(); self.n_zones];
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
@@ -185,7 +185,7 @@ impl Map {
 						if zone_index != previous {
 						panic!("multiple zone traversal not supported"); }
 					}				
-					traversed_space = Belief::Zone(self.get_zone_index(i as u32, j as u32).unwrap());
+					traversed_space = Belief::Zone(zone_index);
 				}
 			};
 		}
@@ -268,20 +268,12 @@ impl Map {
 
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {
 		for parent in &policy.nodes {
-
-			//println!("---");
-
 			if parent.children.len() > 1 {
-				self.draw_circle(&parent.state, self.visibility_distance / 10.0);
+				self.draw_circle(&parent.state, 0.025);
 			}
-
 			for &child_id in &parent.children {
 				let child = &policy.nodes[child_id];
 				self.draw_line(parent.state, child.state, 50);
-
-				//if parent.belief_state != child.belief_state {
-				//	println!("transition {:?} -> {:?}", parent.belief_state, child.belief_state );
-				//}
 			}
 		}
 	}
@@ -452,19 +444,25 @@ impl PRMFuncs<2> for Map {
 
 	fn observe(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
 		let mut output_beliefs: Vec<BeliefState> = Vec::new();
+		output_beliefs.push(belief_state.clone());
 
 		for zone_id in 0..self.n_zones {
-			if norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
-				if !output_beliefs.is_empty() { panic!("zone overlap not yet supported"); }
+			if  norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
+				let fov_feasability = self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::Obstacle;
 
-				output_beliefs = self.get_successor_belief_states(belief_state, zone_id);
+				if fov_feasability {
+					//if !output_beliefs.is_empty() { panic!("zone overlap not yet supported"); }
+
+					for belief in output_beliefs.clone() {
+						output_beliefs.extend(self.get_successor_belief_states(&belief, zone_id));
+					}
+				}
 			}
 		}
 
-		if output_beliefs.is_empty() {
-			output_beliefs.push(belief_state.clone());
+		if output_beliefs.len() > 1 {
+			output_beliefs.remove(0);
 		}
-
 		output_beliefs
 	}
 }
