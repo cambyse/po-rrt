@@ -270,6 +270,14 @@ impl Map {
 		for parent in &policy.nodes {
 			if parent.children.len() > 1 {
 				self.draw_circle(&parent.state, 0.025);
+
+				/*
+				println!("parent belief:{:?}", &parent.belief_state);
+				for &child_id in &parent.children {
+					let child = &policy.nodes[child_id];
+					println("child belief:{:?}", &child.belief_state);
+				}
+				*/
 			}
 			for &child_id in &parent.children {
 				let child = &policy.nodes[child_id];
@@ -451,18 +459,17 @@ impl PRMFuncs<2> for Map {
 				let fov_feasability = self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::Obstacle;
 
 				if fov_feasability {
-					//if !output_beliefs.is_empty() { panic!("zone overlap not yet supported"); }
+					let beliefs = output_beliefs.clone();
+					output_beliefs.clear();
 
-					for belief in output_beliefs.clone() {
+					//if !output_beliefs.is_empty() { panic!("zone overlap not yet supported"); }
+					for belief in beliefs {
 						output_beliefs.extend(self.get_successor_belief_states(&belief, zone_id));
 					}
 				}
 			}
 		}
 
-		if output_beliefs.len() > 1 {
-			output_beliefs.remove(0);
-		}
 		output_beliefs
 	}
 }
@@ -602,6 +609,15 @@ fn test_map_2_observation_model_outside_zones() {
 
 	let posteriors = map.observe(&[-0.3, -0.5], &vec![0.25; 4]);
 	assert_eq!(posteriors, vec![vec![0.25; 4]]);
+}
+
+#[test]
+fn test_map_2_observation_model_when_2_zones_seen_at_the_same_time() {
+	let mut map = Map::open("data/map2_fov.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map2_fov_zone_ids.pgm", 2.0);
+
+	let posteriors = map.observe(&[0.395, -0.245], &vec![0.25; 4]);
+	assert_eq!(posteriors, vec![vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 0.0, 1.0, 0.0], vec![0.0, 1.0, 0.0, 0.0], vec![0.0, 0.0, 0.0, 1.0]]);
 }
 
 #[test]
