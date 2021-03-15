@@ -114,7 +114,8 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				}
 					
 				let finality = goal(&new_state);
-				if finality.iter().any(|w|{*w}) {
+				let is_final = finality.iter().any(|w|{*w});
+				if is_final {
 					self.conservative_reachability.add_final_node(new_node_id, finality);
 				}
 
@@ -133,6 +134,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
+	#[allow(clippy::style)]
 	pub fn plan_belief_state(&mut self, start_belief_state: &BeliefState) -> Policy<N> {
 		assert_belief_state_validity(start_belief_state);
 		
@@ -153,6 +155,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		policy
 	}
 
+	#[allow(clippy::style)]
 	pub fn build_belief_graph(&mut self, start_belief_state: &BeliefState) {
 		// build belief state graph
 		let reachable_belief_states = self.fns.reachable_belief_states(start_belief_state);
@@ -284,7 +287,8 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		Ok(())
 	}
 
-	pub fn react_qmdp(&mut self, start: &[f64; N], belief_state: &Vec<f64>, common_horizon: f64) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
+	#[allow(clippy::style)]
+	pub fn react_qmdp(&mut self, start: &[f64; N], belief_state: &BeliefState, common_horizon: f64) -> Result<Vec<Vec<[f64; N]>>, &'static str> {
 		let kd_start = self.kdtree.nearest_neighbor(*start);
 
 		let (common_path, id) = self.get_common_path(kd_start.id, belief_state, common_horizon).unwrap();
@@ -301,6 +305,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		get_policy_graph(&self.graph, &self.cost_to_goals)
 	}
 
+	#[allow(clippy::style)]
 	fn get_common_path(&self, start_id:usize, belief_state: &BeliefState, common_horizon: f64) -> Result<(Vec<[f64; N]>, usize), &'static str> {
 		if belief_state.len() != self.n_worlds {
 			return Err("belief state size should match the number of worlds")
@@ -343,6 +348,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.graph.print_summary();
 	}
 
+	#[allow(clippy::style)]
 	fn get_best_expected_child(&self, node_id: usize, belief_state: &BeliefState) -> (usize, f64) {
 		let node = &self.graph.nodes[node_id]; 
 		let mut best_child_id = 0;

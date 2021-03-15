@@ -51,12 +51,14 @@ impl<const N: usize> PRMBeliefGraph<N> {
 		self.belief_nodes[to_id].parents.push(from_id);
     }
     
+    #[allow(clippy::style)]
     pub fn belief_id(&self, belief_state: &BeliefState) -> usize {
         self.reachable_belief_states.iter().position(|belief| belief == belief_state).expect("belief state should be found here") // TODO: improve
     }
 }
 
-pub fn transition_probability(parent_bs: &BeliefState, child_bs: &[f64]) -> f64 {
+#[allow(clippy::style)]
+pub fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -> f64 {
     child_bs.iter().zip(parent_bs).fold(0.0, |s, (p, q)| s + if *p > 0.0 { *q } else { 0.0 } )
 }
 

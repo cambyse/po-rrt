@@ -12,6 +12,7 @@ pub struct Reachability {
 }
 
 impl Reachability {
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		Self{ validity: Vec::new(), reachability: Vec::new(), final_node_ids: Vec::new(), finality: Vec::new(), n_worlds: 0 }
 	}

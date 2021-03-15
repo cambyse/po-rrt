@@ -40,6 +40,7 @@ pub struct DiscreteSampler{
 }
 
 impl DiscreteSampler {
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		Self {
 			rng: Pcg64::seed_from_u64(0)

@@ -28,9 +28,10 @@ pub struct SerializablePRMNode {
 }
 
 impl SerializablePRMNode {
+	#[allow(clippy::nonminimal_bool)]
 	pub fn from_prm_node(node : &PRMNode<2>) -> Self {
 		Self{
-			state: node.state.to_vec(),
+			state: node.state.to_vec(),			
 			validity: node.validity.iter().map(|b| !!b).collect(),
 			parents: node.parents.clone(),
 			children: node.children.clone()
@@ -95,10 +96,12 @@ pub trait PRMFuncs<const N: usize> {
 		norm2(a,b)
 	}
 
+	#[allow(clippy::style)]
 	fn reachable_belief_states(&self, belief_state: &BeliefState) -> Vec<BeliefState> {
 		vec![belief_state.to_owned()]
 	}
 
+	#[allow(clippy::style)]
 	fn observe(&self, _state: &[f64; N], belief_state: &BeliefState) -> Vec<BeliefState> {
 		vec![belief_state.to_owned()]
 	}
@@ -230,7 +233,7 @@ pub fn dijkstra<F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_no
 
 /***********************Policy Extraction***********************/
 
-pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &Vec<Vec<f64>>) -> Result<PRMGraph<N>, &'static str> {
+pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &[Vec<f64>]) -> Result<PRMGraph<N>, &'static str> {
 	let mut policy = graph.clone();
 	let n_worlds = cost_to_goals.len();
 

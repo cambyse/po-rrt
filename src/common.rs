@@ -30,6 +30,7 @@ pub struct Policy<const N: usize> {
 }
 
 impl<const N: usize> Policy<N> {
+	#[allow(clippy::style)]
 	pub fn add_node(&mut self, state: &[f64; N], belief_state: &BeliefState) -> usize {
 		let id = self.nodes.len();
 
@@ -111,6 +112,7 @@ impl PartialEq for Priority {
 
 impl Eq for Priority {}
 
+#[allow(clippy::style)]
 pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
 	for (&p, v) in belief_state.iter().zip(validity) {
 		if p > 0.0 && ! v {
@@ -121,6 +123,7 @@ pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
 	true
 }
 
+#[allow(clippy::style)]
 pub fn assert_belief_state_validity(belief_state: &BeliefState) {
 	assert!((belief_state.iter().fold(0.0, |s, p| p + s) - 1.0).abs() < 0.000001);
 }

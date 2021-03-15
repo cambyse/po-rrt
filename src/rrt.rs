@@ -45,7 +45,7 @@ impl<'a, const N: usize> RRTTree<'a, N> {
 		node.parents = parents;
 	}
 
-	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>) -> Vec<f64> {
+	fn distances_from_common_ancestor(&self, leaf_ids: &[usize]) -> Vec<f64> {
 		if leaf_ids.is_empty() {
 			return vec![];
 		}
@@ -215,7 +215,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 		final_node_ids
 	}
 
-	fn get_best_solution(&self, _final_node_ids: &Vec<usize>) -> Vec<(WorldMask, Vec<[f64; N]>)> {
+	fn get_best_solution(&self, _final_node_ids: &[usize]) -> Vec<(WorldMask, Vec<[f64; N]>)> {
 		return vec![];
 		/*
 		final_node_ids.iter()
@@ -230,7 +230,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 			*/
 	}
 
-	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
+	fn get_path_cost(&self, path: &[[f64; N]]) -> f64 {
 		pairwise_iter(path)
 			.map(|(a,b)| self.fns.cost_evaluator(a,b))
 			.sum()

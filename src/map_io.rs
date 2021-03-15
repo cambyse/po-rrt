@@ -186,6 +186,7 @@ impl Map {
 		traversed_space
 	}
 
+	#[allow(clippy::style)]
 	fn get_successor_belief_states(&self, belief_state: &BeliefState, zone_id: usize) -> Vec<Vec<f64>> {
 		let mut output_beliefs: Vec<Vec<f64>> = Vec::new();
 
