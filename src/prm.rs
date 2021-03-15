@@ -97,12 +97,11 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					.map(|(id, _)| id)
 					.collect();
 
-				
 				let bwd_ids: Vec<usize> = neighbour_ids.iter()
-				.map(|&id| (id, &self.graph.nodes[id]))
-				.filter(|(_, node)| self.fns.transition_validator(new_node, node))
-				.map(|(id, _)| id)
-				.collect();
+					.map(|&id| (id, &self.graph.nodes[id]))
+					.filter(|(_, node)| self.fns.transition_validator(new_node, node))
+					.map(|(id, _)| id)
+					.collect();
 							
 				for &id in &fwd_ids {
 					self.graph.add_edge(id, new_node_id);
@@ -680,9 +679,9 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 // - resize map
 // - extract common path
 // - plan from random point
+// - field of view observation model
 // TODO:
 // - avoid copies
 // - optimize nearest neighbor (avoid sqrt)
-// - field of view observation model
 // - actual PRM roadmap
 // - transition on

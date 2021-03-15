@@ -107,14 +107,7 @@ impl Map {
 		}
 	}
 
-	pub fn is_state_valid(&self, xy: &[f64; 2]) -> bool {
-		let ij = self.to_pixel_coordinates(&*xy);
-		let p = self.img.get_pixel(ij[1], ij[0]);
-
-		p[0] > 0
-	}
-
-	pub fn is_state_valid_2(&self, xy: &[f64; 2]) -> Belief {
+	pub fn is_state_valid(&self, xy: &[f64; 2]) -> Belief {
 		let ij = self.to_pixel_coordinates(&*xy);
 		let p = self.img.get_pixel(ij[1], ij[0]);
 
@@ -383,7 +376,7 @@ impl Map {
 
 impl RRTFuncs<2> for Map {
 	fn state_validator(&self, state: &[f64; 2]) -> bool {
-		self.is_state_valid(state)
+		self.is_state_valid(state) != Belief::Obstacle
 	}
 
 	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Reachable {
@@ -399,7 +392,7 @@ impl RRTFuncs<2> for Map {
 
 impl PRMFuncs<2> for Map {
 	fn state_validity(&self, state: &[f64; 2]) -> Option<WorldMask> {
-		match self.is_state_valid_2(state) {
+		match self.is_state_valid(state) {
 			Belief::Zone(zone_index) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
 			Belief::Free => {Some(bitvec![1; self.n_worlds])},
 			Belief::Obstacle => None
@@ -506,13 +499,13 @@ fn coordinate_conversion() {
 #[test]
 fn test_valid_state() {
 	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	assert!(m.is_state_valid(&[0.0, 0.0]));
+	assert_eq!(m.is_state_valid(&[0.0, 0.0]), Belief::Free);
 }
 
 #[test]
 fn test_invalid_state() {
 	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	assert!(!m.is_state_valid(&[0.0, 0.6]));
+	assert_eq!(m.is_state_valid(&[0.0, 0.6]), Belief::Obstacle);
 }
 
 #[test]
@@ -654,9 +647,9 @@ fn test_map_4_states() {
 	map.add_zones("data/map4_zone_ids.pgm", 0.1);
 
 	// door validity
-	assert_eq!(map.is_state_valid_2(&[0.0, 0.0]), Belief::Free);
-	assert_eq!(map.is_state_valid_2(&[0.0, -0.24]), Belief::Obstacle);
-	assert_eq!(map.is_state_valid_2(&[-0.67, -0.26]), Belief::Zone(0));
+	assert_eq!(map.is_state_valid(&[0.0, 0.0]), Belief::Free);
+	assert_eq!(map.is_state_valid(&[0.0, -0.24]), Belief::Obstacle);
+	assert_eq!(map.is_state_valid(&[-0.67, -0.26]), Belief::Zone(0));
 
 	// world validities
 	assert_eq!(map.state_validity(&[-0.29, -0.23]), None);
