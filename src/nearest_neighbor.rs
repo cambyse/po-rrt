@@ -41,17 +41,17 @@ impl<const N: usize> KdTree<N> {
 	}
 
 	pub fn nearest_neighbor(&self, state: [f64; N]) -> &KdNode<N> {
-		self.nearest_neighbor_filtered(state, &|_| { true } )
+		self.nearest_neighbor_filtered(state, |_| { true } )
 	}
 
-	pub fn nearest_neighbor_filtered(&self, state: [f64; N], validator : &dyn Fn(usize) -> bool) -> &KdNode<N> {
+	pub fn nearest_neighbor_filtered(&self, state: [f64; N], validator: impl Fn(usize) -> bool) -> &KdNode<N> {
 		struct Args<'a, const N: usize> {
 			state: [f64; N],
 			dmin: f64,
 			nearest: &'a KdNode<N>,
 		}
 
-		fn inner<'a, const N: usize>(a: &mut Args<'a, N>, from: &'a KdNode<N>, axis: usize, validator : &dyn Fn(usize) -> bool) {
+		fn inner<'a, const N: usize>(a: &mut Args<'a, N>, from: &'a KdNode<N>, axis: usize, validator : &impl Fn(usize) -> bool) {
 			{
 				let d = norm2(&from.state, &a.state);
 				if d < a.dmin && validator(from.id) {
@@ -82,21 +82,21 @@ impl<const N: usize> KdTree<N> {
 		}
 
 		let mut a = Args { state, dmin: f64::INFINITY, nearest: &self.root };
-		inner(&mut a, &self.root, 0, validator);
+		inner(&mut a, &self.root, 0, &validator);
 		a.nearest
 	}
 
-	pub fn nearest_neighbors(&self, state: [f64; N], radius: f64) -> Vec<&KdNode<N>> {
+	pub fn nearest_neighbors_filtered(&self, state: [f64; N], radius: f64, validator: impl Fn(usize) -> bool) -> Vec<&KdNode<N>> {
 		struct Args<'a, const N: usize> {
 			state: [f64; N],
 			radius: f64,
 			nearest: Vec<&'a KdNode<N>>,
 		}
 
-		fn inner<'a, const N: usize>(a: &mut Args<'a, N>, from: &'a KdNode<N>, axis: usize) {
+		fn inner<'a, const N: usize>(a: &mut Args<'a, N>, from: &'a KdNode<N>, axis: usize, validator : &impl Fn(usize) -> bool) {
 			{
 				let d = norm2(&from.state, &a.state);
-				if d <= a.radius {
+				if d <= a.radius && validator(from.id) {
 					a.nearest.push(from);
 				}
 			}
@@ -104,16 +104,20 @@ impl<const N: usize> KdTree<N> {
 			let next_axis = (axis+1) % N;
 
 			if a.state[axis] - a.radius <= from.state[axis] && from.left.is_some() {
-				inner(a, from.left.as_ref().unwrap(), next_axis);
+				inner(a, from.left.as_ref().unwrap(), next_axis, validator);
 			}
 			if a.state[axis] + a.radius >= from.state[axis] && from.right.is_some() {
-				inner(a, from.right.as_ref().unwrap(), next_axis);
+				inner(a, from.right.as_ref().unwrap(), next_axis, validator);
 			}
 		}
 
 		let mut a = Args { state, radius, nearest: vec![] };
-		inner(&mut a, &self.root, 0);
+		inner(&mut a, &self.root, 0, &validator);
 		a.nearest
+	}
+	
+	pub fn nearest_neighbors(&self, state: [f64; N], radius: f64) -> Vec<&KdNode<N>> {
+		self.nearest_neighbors_filtered(state, radius, |_| { true } )
 	}
 }
 
@@ -259,25 +263,25 @@ fn test_nearest_neighbor() {
 fn test_nearest_neighbor_with_filter_from_0(){
 	let (tree, _, __) = create_tree();
 
-	let node = tree.nearest_neighbor_filtered([3.1, 6.0], &|_| {true});
+	let node = tree.nearest_neighbor_filtered([3.1, 6.0], |_| {true});
 	check_node(node, 0, [3.0, 6.0]);
 
-	let node = tree.nearest_neighbor_filtered([3.1, 6.0], &|id| { if vec![0].contains(&id) { false } else { true } });
+	let node = tree.nearest_neighbor_filtered([3.1, 6.0], |id| { if vec![0].contains(&id) { false } else { true } });
 	check_node(node, 5, [2.0, 7.0]);
 
-	let node = tree.nearest_neighbor_filtered([3.1, 6.0], &|id| { if vec![0, 5].contains(&id) { false } else { true } });
+	let node = tree.nearest_neighbor_filtered([3.1, 6.0], |id| { if vec![0, 5].contains(&id) { false } else { true } });
 	check_node(node, 3, [6.0, 12.0]);
 
-	let node = tree.nearest_neighbor_filtered([3.1, 6.0], &|id| { if vec![0, 5, 3].contains(&id) { false } else { true } });
+	let node = tree.nearest_neighbor_filtered([3.1, 6.0], |id| { if vec![0, 5, 3].contains(&id) { false } else { true } });
 	check_node(node, 4, [9.0, 1.0]);
 
-	let node = tree.nearest_neighbor_filtered([3.1, 6.0], &|id| { if vec![0, 5, 3, 4].contains(&id) { false } else { true } });
+	let node = tree.nearest_neighbor_filtered([3.1, 6.0], |id| { if vec![0, 5, 3, 4].contains(&id) { false } else { true } });
 	check_node(node, 2, [13.0, 15.0]);
 
-	let node = tree.nearest_neighbor_filtered([3.1, 6.0], &|id| { if vec![0, 5, 3, 4, 2].contains(&id) { false } else { true } });
+	let node = tree.nearest_neighbor_filtered([3.1, 6.0], |id| { if vec![0, 5, 3, 4, 2].contains(&id) { false } else { true } });
 	check_node(node, 6, [10.0, 19.0]);
 
-	let node = tree.nearest_neighbor_filtered([3.1, 6.0], &|id| { if vec![0, 5, 3, 4, 2, 6].contains(&id) { false } else { true } });
+	let node = tree.nearest_neighbor_filtered([3.1, 6.0], |id| { if vec![0, 5, 3, 4, 2, 6].contains(&id) { false } else { true } });
 	check_node(node, 1, [17.0, 15.0]);
 }
 

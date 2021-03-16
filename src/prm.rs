@@ -67,7 +67,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let world = self.discrete_sampler.sample(self.n_worlds);
 
 			// Second, retrieve closest node for sampled world and steer from there
-			let kd_from = self.kdtree.nearest_neighbor_filtered(new_state, &|id|{self.conservative_reachability.reachability(id)[world]}); // log n
+			let kd_from = self.kdtree.nearest_neighbor_filtered(new_state, |id|{self.conservative_reachability.reachability(id)[world]}); // log n
 			steer(&kd_from.state, &mut new_state, max_step); 
 
 			if let Some(state_validity) = self.fns.state_validity(&new_state) {

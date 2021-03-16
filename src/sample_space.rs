@@ -53,8 +53,8 @@ impl DiscreteSampler {
 		}
 	}
 
-	pub fn sample(&mut self, n_worlds: usize) -> usize {
-		self.rng.gen_range(0..n_worlds)
+	pub fn sample(&mut self, n: usize) -> usize {
+		self.rng.gen_range(0..n)
 	}
 }
 

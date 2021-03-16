@@ -223,6 +223,27 @@ impl Map {
 		output_beliefs
 	}
 
+	pub fn observe_impl(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
+		let mut output_beliefs: Vec<BeliefState> = Vec::new();
+		output_beliefs.push(belief_state.clone());
+
+		for zone_id in 0..self.n_zones {
+			if  norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
+				let fov_feasability = self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::Obstacle;
+
+				if fov_feasability {
+					let beliefs = output_beliefs.clone();
+					output_beliefs.clear();
+
+					for belief in beliefs {
+						output_beliefs.extend(self.get_successor_belief_states(&belief, zone_id));
+					}
+				}
+			}
+		}
+		output_beliefs
+	}
+
 	// drawing functions
 	pub fn resize(&mut self, factor: u32) {
 		let w = self.img.width() * factor;
@@ -253,8 +274,8 @@ impl Map {
 
 	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
 		for c in &rrttree.nodes {
-			for parent in &c.parents {
-				let parent = &rrttree.nodes[parent.id];
+			if let Some(ref parent_link) = c.parent {
+				let parent = &rrttree.nodes[parent_link.id];
 				self.draw_line(parent.state, c.state, 180);
 			}
 		}
@@ -376,8 +397,12 @@ impl Map {
 } 
 
 impl RRTFuncs<2> for Map {
-	fn state_validator(&self, state: &[f64; 2]) -> bool {
-		self.is_state_valid(state) != Belief::Obstacle
+	fn state_validator(&self, state: &[f64; 2]) -> Option<WorldMask> {
+		match self.is_state_valid(state) {
+			Belief::Zone(zone_index) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
+			Belief::Free => {Some(bitvec![1; self.n_worlds])},
+			Belief::Obstacle => None
+		}
 	}
 
 	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Reachable {
@@ -388,6 +413,14 @@ impl RRTFuncs<2> for Map {
 			Belief::Obstacle => { Reachable::Never },
 			Belief::Zone(zone) => { Reachable::Restricted(&self.zones_to_worlds[zone]) }
 		}
+	}
+
+	fn observe_new_beliefs(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
+		let mut output_beliefs = self.observe_impl(state, belief_state);
+
+		output_beliefs.remove(0);
+
+		output_beliefs
 	}
 }
 
@@ -445,26 +478,7 @@ impl PRMFuncs<2> for Map {
 	}
 
 	fn observe(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
-		let mut output_beliefs: Vec<BeliefState> = Vec::new();
-		output_beliefs.push(belief_state.clone());
-
-		for zone_id in 0..self.n_zones {
-			if  norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
-				let fov_feasability = self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::Obstacle;
-
-				if fov_feasability {
-					let beliefs = output_beliefs.clone();
-					output_beliefs.clear();
-
-					//if !output_beliefs.is_empty() { panic!("zone overlap not yet supported"); }
-					for belief in beliefs {
-						output_beliefs.extend(self.get_successor_belief_states(&belief, zone_id));
-					}
-				}
-			}
-		}
-
-		output_beliefs
+		self.observe_impl(state, belief_state)
 	}
 }
 
