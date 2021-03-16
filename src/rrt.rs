@@ -184,7 +184,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 					};
 
 					// Second, add node and connect to best parent
-					let mut neighbour_ids: Vec<usize> = kdtree.nearest_neighbors_filtered(new_state, radius, |id| self.rrttree.nodes[id].belief_state_id == sampled_belief_id ).iter()
+					let mut neighbour_ids: Vec<usize> = kdtree.nearest_neighbors_filtered(new_state, radius * 2.0, |id| self.rrttree.nodes[id].belief_state_id == sampled_belief_id ).iter()
 						.map(|&kd_node| kd_node.id)
 						.collect();
 
@@ -202,8 +202,8 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 
 					// Evaluate which is the best parent that we can possibly get
 					let distances = self.rrttree.distances_from_common_ancestor(&neighbour_ids);
-					let (parent_id, parent_distance) = zip(&neighbour_ids, &distances)
-							.map(|(id,d)| (*id, *d))
+					let (parent_id, new_state_distance) = zip(&neighbour_ids, &distances)
+							.map(|(id,d)| (*id, *d + self.fns.cost_evaluator(&self.rrttree.nodes[*id].state, &new_state)  ))
 							.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
 							.unwrap();
 					
@@ -218,7 +218,6 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 					kdtree.add(new_state, new_node_id);
 
 					// Reparent					
-					let new_state_distance = parent_distance + dist_from_parent;
 					for (neighbour_id, distance) in zip(&neighbour_ids, &distances) {
 						if *neighbour_id == parent_id { continue; }
 						let neighbour = &self.rrttree.nodes[*neighbour_id];
@@ -312,7 +311,7 @@ fn test_plan_on_map() {
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 		DiscreteSampler::new(),
 		&m);
-	let _path_result = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.1, 5.0, 5000);
+	let _path_result = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.05, 5.0, 5000);
 
 	//assert!(path_result.as_ref().expect("No path found!").len() > 2);
 	let mut m = m.clone();
