@@ -231,16 +231,20 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 					}
 					
 					// Third, transition to other beliefs
-					/*let belief_state = &self.rrttree.belief_states[sampled_belief_id];
+					let belief_state = &self.rrttree.belief_states[sampled_belief_id];
 					let children_belief_states = self.fns.observe_new_beliefs(&new_state, &belief_state);
 
-					for child_belief_state in children_belief_states.iter() {
-						/*let children_belief_state_id = self.rrttree.add_belief_state(child_belief_state.clone());
-						let parent_link = ParentLink{id: new_node_id, dist: 0.0}; // need to have dist in the edge?
-
-						let new_node_id = self.rrttree.add_node(new_state, children_belief_state_id, Some(parent_link), dist_from_root);
-						kdtree.add(new_state, new_node_id);*/
-					}*/
+					for child_belief_state in &children_belief_states {
+						let children_belief_state_id = self.rrttree.belief_states.iter().position(|bs| *bs == *child_belief_state);
+						let children_belief_state_id = match children_belief_state_id {
+							Some(children_belief_state_id) => children_belief_state_id,
+							None => self.rrttree.add_belief_state(child_belief_state.clone())
+						};
+						
+						let parent_link = ParentLink{id: new_node_id, dist: 0.0};
+						let new_node_id = self.rrttree.add_node(new_state, children_belief_state_id, Some(parent_link));
+						kdtree.add(new_state, new_node_id);
+					}
 					
 					if goal(&new_state) {
 						final_node_ids.push(new_node_id);
@@ -311,7 +315,7 @@ fn test_plan_on_map() {
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 		DiscreteSampler::new(),
 		&m);
-	let _path_result = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.05, 5.0, 5000);
+	let _path_result = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.05, 5.0, 10000);
 
 	//assert!(path_result.as_ref().expect("No path found!").len() > 2);
 	let mut m = m.clone();
