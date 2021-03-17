@@ -557,8 +557,8 @@ fn test_plan_on_map2_qmdp() {
 //	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
 //	full.draw_graph_for_world(&prm.graph, 0);
 
-	for path in paths {
-		full.draw_path(path);
+	for (i, path) in enumerate(&paths) {
+		full.draw_path(path, crate::map_io::colors::color_map(i));
 	}
 	full.save("results/test_plan_on_map2_qmdp.pgm");
 }
@@ -590,9 +590,10 @@ fn test_plan_on_map1_2_goals() {
 //	full.draw_graph_from_root(&prm.get_policy_graph().unwrap());
 //	full.draw_graph_for_world(&prm.graph, 0);
 
-	for path in paths {
-		full.draw_path(path);
+	for (i, path) in enumerate(paths) {
+		full.draw_path(&path, crate::map_io::colors::color_map(i));
 	}
+
 	full.save("results/test_plan_on_map1_2_goals.pgm");
 }
 

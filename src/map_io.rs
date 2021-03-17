@@ -9,6 +9,50 @@ use std::collections::HashSet;
 extern crate queues;
 use queues::*;
 use bitvec::prelude::*;
+use image::Pixel;
+use image::Rgb;
+
+pub mod colors {
+	use image::Rgb;
+
+	macro_rules! define_colors {
+		{$($name:ident: $values: expr;)*} => {
+			$(pub const $name: Rgb<u8> = Rgb($values);)*
+		}
+	}
+
+	define_colors! {
+		BLACK:     [0,0,0];
+		WHITE:     [255,255,255];
+		RED:       [255,0,0];
+		LIME:      [0,255,0];
+		BLUE:      [0,0,255];
+		YELLOW:    [255,255,0];
+		CYAN:      [0,255,255];
+		MAGENTA:   [255,0,255];
+		MAROON:    [128,0,0];
+		OLIVE:     [128,128,0];
+		GREEN:     [0,128,0];
+		PURPLE:    [128,0,128];
+		TEAL:      [0,128,128];
+		NAVY:      [0,0,128];
+		GRAY1:     [30,30,30];
+		GRAY2:     [60,60,60];
+		GRAY3:     [90,90,90];
+		GRAY4:     [120,120,120];
+		GRAY5:     [150,150,150];
+		GRAY6:     [180,180,180];
+		GRAY7:     [210,210,210];
+		GRAY8:     [240,240,240];
+	}
+
+	pub const COLOR_MAP: &[Rgb<u8>] = &[RED, OLIVE, BLUE, MAGENTA, LIME, NAVY];
+	pub fn color_map(index: usize) -> Rgb<u8> {
+		COLOR_MAP[index % COLOR_MAP.len()]
+	}
+}
+
+use colors::*;
 
 #[derive(Debug, PartialEq)]
 pub enum Belief {
@@ -20,7 +64,7 @@ pub enum Belief {
 #[derive(Clone)]
 pub struct Map
 {
-	img: image::GrayImage,
+	img: image::RgbImage,
 	low: [f64; 2],
 	//up: [f64; 2], // low + up are enough and make up redundant
 	ppm: f64,
@@ -39,11 +83,13 @@ impl Map {
 	}
 
 	pub fn save(&self, filepath: &str) {
-		self.img.save(filepath).expect("Couldn't save image");
+		self.img.save(format!("{}.png", filepath)).expect("Couldn't save image");
 	}
 
 	fn build(img: image::GrayImage, low: [f64; 2], up: [f64; 2])-> Map {
 		let ppm = (img.width() as f64) / (up[0] - low[0]);
+
+		let img = DynamicImage::ImageLuma8(img).to_rgb8();
 
 		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new(), zone_positions: Vec::new(), visibility_distance: 0.0}
 	}
@@ -247,27 +293,18 @@ impl Map {
 	pub fn resize(&mut self, factor: u32) {
 		let w = self.img.width() * factor;
 		let h = self.img.height() * factor;
-		
-		let resized_im = DynamicImage::ImageLuma8(self.img.clone()).resize(w, h, image::imageops::FilterType::Lanczos3);
-		self.img = match resized_im {
-			ImageLuma8(gray_img) => gray_img,
-			_ => panic!("Wrong image format!"),
-		};
 
+		self.img = image::imageops::resize(&self.img, w, h, image::imageops::FilterType::Nearest);
 		self.ppm *= factor as f64;
 
 		if let Some(zone_img) = &self.zones {
-			let resized_zones = DynamicImage::ImageLuma8(zone_img.clone()).resize(w, h, image::imageops::FilterType::Lanczos3);
-			self.zones = match resized_zones {
-			ImageLuma8(gray_img) => Some(gray_img),
-			_ => panic!("Wrong image format!"),
-		};
+			self.zones = Some(image::imageops::resize(zone_img, w, h, image::imageops::FilterType::Nearest));
 		}
 	}
 
-	pub fn draw_path(&mut self, path: Vec<[f64;2]>) {
+	pub fn draw_path(&mut self, path: &Vec<[f64;2]>, color: Rgb<u8>) {
 		for i in 1..path.len() {
-			self.draw_line(path[i-1], path[i], 0);
+			self.draw_line(path[i-1], path[i], color, 1.0);
 		}
 	}
 
@@ -275,7 +312,8 @@ impl Map {
 		for c in &rrttree.nodes {
 			if let Some(ref parent_link) = c.parent {
 				let parent = &rrttree.nodes[parent_link.id];
-				self.draw_line(parent.state, c.state, 180);
+				let color = color_map(c.belief_state_id);
+				self.draw_line(parent.state, c.state, color, 0.5);
 			}
 		}
 	}
@@ -283,7 +321,7 @@ impl Map {
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {
 		for parent in &policy.nodes {
 			if parent.children.len() > 1 {
-				self.draw_circle(&parent.state, 0.025);
+				self.draw_circle(&parent.state, 0.025, NAVY);
 
 				/*
 				println!("parent belief:{:?}", &parent.belief_state);
@@ -295,29 +333,30 @@ impl Map {
 			}
 			for &child_id in &parent.children {
 				let child = &policy.nodes[child_id];
-				self.draw_line(parent.state, child.state, 50);
+				self.draw_line(parent.state, child.state, GRAY3, 1.0);
 			}
 		}
 	}
 
-	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: u8) {
+	fn draw_line(&mut self, a: [f64; 2], b: [f64; 2], color: Rgb<u8>, alpha: f32) {
 		let a_ij = self.to_pixel_coordinates(&a);
 		let b_ij = self.to_pixel_coordinates(&b);
 
 		let a = (a_ij[0] as f32, a_ij[1] as f32);
 		let b = (b_ij[0] as f32, b_ij[1] as f32);
 
-		for ((i, j), value) in line_drawing::XiaolinWu::<f32, i32>::new(a, b) {
+		for ((i, j), line_alpha) in line_drawing::XiaolinWu::<f32, i32>::new(a, b) {
 			if 0 <= i && i < self.img.height() as i32 && 0 <= j && j < self.img.width() as i32 {
 				let pixel = self.img.get_pixel_mut(j as u32, i as u32);
-				let old_color = pixel.0[0];
-				let new_color = ((1.0 - value) * (old_color as f32) + value * (color as f32)) as u8;
-				pixel.0 = [new_color];
+				pixel.apply2(&color, |old, new| {
+					let alpha = alpha * line_alpha;
+					((1.0 - alpha) * (old as f32) + alpha * (new as f32)) as u8
+				});
 			}
 		}
 	}
 
-	fn draw_circle(&mut self, xy: &[f64; 2], radius: f64) {
+	fn draw_circle(&mut self, xy: &[f64; 2], radius: f64, color: Rgb<u8>) {
 		for angle_step in 1..51 {
 			let angle_from = (angle_step - 1) as f64 * 2.0 * std::f64::consts::PI / 50.0;
 			let angle_to = (angle_step) as f64 * 2.0 * std::f64::consts::PI / 50.0;
@@ -325,7 +364,7 @@ impl Map {
 			let xy_from = [xy[0] + radius * angle_from.cos(), xy[1] + radius * angle_from.sin()];
 			let xy_to = [xy[0] + radius * angle_to.cos(), xy[1] + radius * angle_to.sin()];
 
-			self.draw_line(xy_from, xy_to, 100);
+			self.draw_line(xy_from, xy_to, color, 1.0);
 		}
 	}
 	
@@ -333,7 +372,7 @@ impl Map {
 		for from in &graph.nodes {
 			for to_id in from.children.clone() {
 				let to  = &graph.nodes[to_id];
-				self.draw_line(from.state, to.state, 200);
+				self.draw_line(from.state, to.state, GRAY5, 0.5);
 			}
 		}
 	}
@@ -364,7 +403,7 @@ impl Map {
 				let to = &graph.nodes[to_id];
 
 				if validator(to) {
-					self.draw_line(from.state, to.state, 200);
+					self.draw_line(from.state, to.state, GRAY7, 0.5);
 
 					if !visited.contains(&to_id) {
 						queue.add(to_id).expect("Overflow");
@@ -381,8 +420,8 @@ impl Map {
 				let z = self.get_zone_index(i, j);
 
 				if let Some(zone_id) = z {
-					let color = if self.zones_to_worlds[zone_id][world_id] { 255 } else { 0 };
-					self.img.put_pixel(j, i, Luma([color]));
+					let color = if self.zones_to_worlds[zone_id][world_id] { WHITE } else { BLACK };
+					self.img.put_pixel(j, i, color);
 				}	
 			}
 		}
@@ -390,7 +429,7 @@ impl Map {
 
 	pub fn draw_zones_observability(&mut self) {
 		for xy in &self.zone_positions.clone() {
-			self.draw_circle(xy, self.visibility_distance);
+			self.draw_circle(xy, self.visibility_distance, TEAL);
 		}
 	}
 } 
@@ -525,8 +564,8 @@ fn clone_draw_line_and_save_image() {
 	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	let mut m = m.clone();
 
-	m.draw_line([-0.5, -0.5], [0.5, 0.5], 128);
-	m.draw_path([[-0.3, -0.4], [0.0, 0.0] ,[0.4, 0.3]].to_vec());
+	m.draw_line([-0.5, -0.5], [0.5, 0.5], GRAY5, 1.0);
+	m.draw_path(&[[-0.3, -0.4], [0.0, 0.0] ,[0.4, 0.3]].to_vec(), GRAY5);
 
 	m.save("results/tmp.pgm");
 
