@@ -90,30 +90,22 @@ impl<'a, const N: usize> RRTTree<N> {
 			.collect()
 	}
 
-	fn get_path_to(&self, _id: usize) -> Vec<(WorldMask, Vec<[f64; N]>)> {
-		return vec![];
-		/* 
-		let mut path = Vec::new();
+	fn get_path_to(&self, mut node_id: usize) -> Vec<[f64; N]> {
+		let mut path = vec![self.nodes[node_id].state];
 
-		let mut node = &self.nodes[id];
-		path.push(node.state);
-
-		/*
-		while let Some(id) = node.parent_id {
-			node = &self.nodes[id];
-			path.push(node.state);
+		while let Some(parent_link) = &self.nodes[node_id].parent {
+			node_id = parent_link.id;
+			path.push(self.nodes[node_id].state);
 		}
-		*/
 
 		path.reverse();
 		path
-		*/
 	}
 }
 
 pub trait RRTFuncs<const N: usize> {
-	fn state_validator(&self, _state: &[f64; N]) -> Option<WorldMask> {
-		None
+	fn state_validator(&self, _state: &[f64; N]) -> Reachable {
+		Reachable::Always
 	}
 
 	fn transition_validator(&self, _from: &[f64; N], _to: &[f64; N]) -> Reachable {
@@ -133,151 +125,129 @@ pub trait RRTFuncs<const N: usize> {
 pub struct RRT<'a, F: RRTFuncs<N>, const N: usize> {
 	sampler: ContinuousSampler<N>,
 	discrete_sampler: DiscreteSampler,
-	rrttree: RRTTree<N>,
 	fns: &'a F,
 }
 
 impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 	pub fn new(sampler: ContinuousSampler<N>, discrete_sampler: DiscreteSampler, fns: &'a F) -> Self {
-		let rrttree = RRTTree::new();
-		Self { sampler, discrete_sampler, rrttree, fns }
+		Self { sampler, discrete_sampler, fns }
 	}
 
-	pub fn plan(&mut self, start: [f64; N], belief_state: &BeliefState, goal: fn(&[f64; N]) -> bool,
-				 max_step: f64, search_radius: f64, n_iter_max: u32) -> Vec<(WorldMask, Vec<[f64; N]>)> {
-		let final_node_ids = self.grow_tree(start, belief_state, goal, max_step, search_radius, n_iter_max);
-		self.get_best_solution(&final_node_ids)
-	}
-
-	fn grow_tree(&mut self, start: [f64; N], start_belief_state: &BeliefState, goal: fn(&[f64; N]) -> bool,
-				max_step: f64, search_radius: f64, n_iter_max: u32) -> Vec<usize> {
+	pub fn plan(&mut self, start: [f64; N], start_belief_state: &BeliefState, goal: fn(&[f64; N]) -> bool,
+				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (RRTTree<N>, Option<Vec<[f64; N]>>) {
 		let mut final_node_ids = Vec::<usize>::new();
-		self.rrttree = RRTTree::new();
+		let mut rrttree = RRTTree::new();
 		let mut kdtree = KdTree::new(start);
 
 		{
-			let belief_id = self.rrttree.add_belief_state(start_belief_state.clone());
-			self.rrttree.add_node(start, belief_id, None); // root node
+			let belief_id = rrttree.add_belief_state(start_belief_state.clone());
+			rrttree.add_node(start, belief_id, None); // root node
 		}
-
 
 		for _ in 0..n_iter_max {
 			let mut new_state = self.sampler.sample();
-			let sampled_belief_id = self.discrete_sampler.sample(self.rrttree.belief_states.len());
+			let sampled_belief_id = self.discrete_sampler.sample(rrttree.belief_states.len());
 
-			let kd_from = kdtree.nearest_neighbor_filtered(new_state, |id| self.rrttree.nodes[id].belief_state_id == sampled_belief_id ); // log n
+			// XXX nearest_neighbor_filtered can return the root even if the filter closure disagrees.
+			let canonical_neighbor = kdtree.nearest_neighbor_filtered(new_state, |id| rrttree.nodes[id].belief_state_id == sampled_belief_id); // log n
+			steer(&canonical_neighbor.state, &mut new_state, max_step);
 
-			steer(&kd_from.state, &mut new_state, max_step);
+			let belief_state = &rrttree.belief_states[sampled_belief_id];
+			if self.fns.state_validator(&new_state).is_compatible(&belief_state) {
+				// RRT* algorithm
+				// Step 1: Find all the neighbors near of new_state. The radius we use is from papers of RRT*
 
-			let state_validity = self.fns.state_validator(&new_state);
+				// XXX Not sure why adding the 2.0 multiplicative constant is better
+				let radius = 2.0 * {
+					let n = rrttree.nodes.len() as f64;
+					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
+					if s < max_step { s } else { max_step }
+				};
 
-			if let Some(state_validity) = state_validity {
-				let belief_state = &self.rrttree.belief_states[sampled_belief_id];
-				if is_compatible(belief_state, &state_validity) {
-					// RRT* algorithm
-					// Step 1: Find the best parent we can get
-					// First, we find the neighbors in a specific radius of new_state.
-					let radius = {
-						let n = self.rrttree.nodes.len() as f64;
-						let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
-						if s < max_step { s } else { max_step }
-					};
+				let mut neighbor_ids: Vec<usize> = kdtree
+					.nearest_neighbors_filtered(new_state, radius, |id| rrttree.nodes[id].belief_state_id == sampled_belief_id)
+					.iter()
+					.map(|&kd_node| kd_node.id)
+					.collect();
+				if neighbor_ids.is_empty() {
+					neighbor_ids.push(canonical_neighbor.id);
+				}
 
-					// Second, add node and connect to best parent
-					let mut neighbour_ids: Vec<usize> = kdtree.nearest_neighbors_filtered(new_state, radius * 2.0, |id| self.rrttree.nodes[id].belief_state_id == sampled_belief_id ).iter()
-						.map(|&kd_node| kd_node.id)
-						.collect();
+				// Step 2: Retain only the neighbors that have valid transitions and are compatible with our belief
+				let neighbor_ids: Vec<usize> = neighbor_ids.iter()
+					.map(|&id| (id, self.fns.transition_validator(&rrttree.nodes[id].state, &new_state) ) )
+					.filter(|(_, transition)| transition.is_compatible(belief_state) )
+					.map(|(id, _)| id)
+					.collect();
 
-					if neighbour_ids.is_empty() { neighbour_ids.push(kd_from.id); }
+				if neighbor_ids.is_empty() {
+					continue;
+				}
 
-					let neighbour_ids: Vec<usize> = neighbour_ids.iter()
-						.map(|&id| (id, self.fns.transition_validator(&self.rrttree.nodes[id].state, &new_state) ) )
-						.filter(|(_, transition)| transition.is_compatible(belief_state) )
-						.map(|(id, _)| id)
-						.collect();
+				// Step 3: Compute useful metrics to pick the best parents.
+				// distance between root (or common ancestor) and each neighbor
+				let root_to_neighbor_distances = rrttree.distances_from_common_ancestor(&neighbor_ids);
+				// distance between each neighbor and the new_state node
+				let neighbor_to_new_state_distances = neighbor_ids.iter().cloned()
+					.map(|id| self.fns.cost_evaluator(&rrttree.nodes[id].state, &new_state))
+					.collect::<Vec<_>>();
 
-					if neighbour_ids.is_empty() { continue; }
+				// Step 4: Find the best parent we can get.
+				let (parent_id, _, parent_to_new_state_dist, root_to_new_state_distance) =
+					izip!(&neighbor_ids, &root_to_neighbor_distances, &neighbor_to_new_state_distances)
+						.map(|(&id, &rnd, &nnd)| (id, rnd, nnd, rnd+nnd))
+						.min_by(|(_, _, _, a), (_, _, _, b)| a.partial_cmp(b).unwrap())
+						.unwrap();
 
-					//println!("number of neighbors:{}", neighbour_ids.len());
+				// Step 5: Add the node new_state in the trees
+				let parent_link = ParentLink { id: parent_id, dist: parent_to_new_state_dist};
+				let new_node_id = rrttree.add_node(new_state, sampled_belief_id, Some(parent_link));
+				kdtree.add(new_state, new_node_id);
 
-					// Evaluate which is the best parent that we can possibly get
-					let distances = self.rrttree.distances_from_common_ancestor(&neighbour_ids);
-					let (parent_id, new_state_distance) = zip(&neighbour_ids, &distances)
-							.map(|(id,d)| (*id, *d + self.fns.cost_evaluator(&self.rrttree.nodes[*id].state, &new_state)  ))
-							.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-							.unwrap();
-					
-					let dist_from_parent = {
-						let parent = &self.rrttree.nodes[parent_id];
-						self.fns.cost_evaluator(&parent.state, &new_state) 
-					};
+				// Step 6: Reparent neighbors that could be better with the new_state node as a parent.
+				for (&neighbor_id, &root_to_neighbor_distance, &neighbor_to_new_state_distance) in
+						izip!(&neighbor_ids, &root_to_neighbor_distances, &neighbor_to_new_state_distances) {
+					if neighbor_id == parent_id { continue; }
 
-					let parent_link = ParentLink{id: parent_id, dist: dist_from_parent};
-					
-					let new_node_id = self.rrttree.add_node(new_state, sampled_belief_id, Some(parent_link));
-					kdtree.add(new_state, new_node_id);
+					// XXX We should call self.fns.transition_validator() again if the transition validator is not symetric.
+					// XXX We also assume that cost from A to B is the same from B to A.
 
-					// Reparent					
-					for (neighbour_id, distance) in zip(&neighbour_ids, &distances) {
-						if *neighbour_id == parent_id { continue; }
-						let neighbour = &self.rrttree.nodes[*neighbour_id];
-						// XXX We should call self.fns.transition_validator() again if the transition
-						// validator is not symetric.
-						let new_dist_to_parent = self.fns.cost_evaluator(&new_state, &neighbour.state);
-						let new_distance = new_state_distance + new_dist_to_parent;
-						if new_distance < *distance {
-							self.rrttree.nodes[*neighbour_id].parent = Some(ParentLink{id: new_node_id, dist: new_dist_to_parent});
-						}
+					let root_distance_if_new_state_parent = root_to_new_state_distance + neighbor_to_new_state_distance;
+					if root_distance_if_new_state_parent < root_to_neighbor_distance {
+						let parent_link = ParentLink{id: new_node_id, dist: neighbor_to_new_state_distance};
+						rrttree.nodes[neighbor_id].parent = Some(parent_link);
 					}
-					
-					// Third, transition to other beliefs
-					let belief_state = &self.rrttree.belief_states[sampled_belief_id];
-					let children_belief_states = self.fns.observe_new_beliefs(&new_state, &belief_state);
+				}
 
-					for child_belief_state in &children_belief_states {
-						let children_belief_state_id = self.rrttree.belief_states.iter().position(|bs| *bs == *child_belief_state);
-						let children_belief_state_id = match children_belief_state_id {
-							Some(children_belief_state_id) => children_belief_state_id,
-							None => self.rrttree.add_belief_state(child_belief_state.clone())
-						};
-						
-						let parent_link = ParentLink{id: new_node_id, dist: 0.0};
-						let new_node_id = self.rrttree.add_node(new_state, children_belief_state_id, Some(parent_link));
-						kdtree.add(new_state, new_node_id);
-					}
-					
-					if goal(&new_state) {
-						final_node_ids.push(new_node_id);
-						let belief_state = &self.rrttree.belief_states[sampled_belief_id];
+				// Third, transition to other beliefs
+				/*let belief_state = &self.rrttree.belief_states[sampled_belief_id];
+				let children_belief_states = self.fns.observe_new_beliefs(&new_state, &belief_state);
 
-						println!("found leaf for belief:{}, {:?}", sampled_belief_id, &belief_state);
-					}
+				for child_belief_state in children_belief_states.iter() {
+					/*let children_belief_state_id = self.rrttree.add_belief_state(child_belief_state.clone());
+					let parent_link = ParentLink{id: new_node_id, dist: 0.0}; // need to have dist in the edge?
+
+					let new_node_id = self.rrttree.add_node(new_state, children_belief_state_id, Some(parent_link), dist_from_root);
+					kdtree.add(new_state, new_node_id);*/
+				}*/
+
+				if goal(&new_state) {
+					final_node_ids.push(new_node_id);
+					let belief_state = &rrttree.belief_states[sampled_belief_id];
+
+					println!("found leaf for belief:{}, {:?}", sampled_belief_id, &belief_state);
 				}
 			}
 		}
 
-		final_node_ids
-	}
+		let best_goal_node_id = zip(&final_node_ids, rrttree.distances_from_common_ancestor(&final_node_ids))
+			.min_by(|(_,a),(_,b)| a.partial_cmp(b).unwrap())
+			.map(|(&id, _)| id);
 
-	fn get_best_solution(&self, _final_node_ids: &[usize]) -> Vec<(WorldMask, Vec<[f64; N]>)> {
-		return vec![];
-		/*
-		final_node_ids.iter()
-			.map(|id| {
-				let path = self.rrttree.get_path_to(*id);
-				let cost = self.get_path_cost(&path);
-				(path, cost)
-			})
-			.min_by(|(_,a),(_,b)| a.partial_cmp(b).expect("NaN found"))
-			.map(|(p, _)| p)
-			.ok_or("No solution found")
-			*/
-	}
+		let best_path = best_goal_node_id
+			.map(|id| rrttree.get_path_to(id));
 
-	fn get_path_cost(&self, path: &[[f64; N]]) -> f64 {
-		pairwise_iter(path)
-			.map(|(a,b)| self.fns.cost_evaluator(a,b))
-			.sum()
+		(rrttree, best_path)
 	}
 }
 
@@ -299,8 +269,8 @@ fn test_plan_empty_space() {
 		DiscreteSampler::new(),
 		&Funcs{});
 
-	let _path_result = rrt.plan([0.0, 0.0], &vec![1.0], goal, 0.1, 1.0, 1000);
-	//assert!(path_result.as_ref().expect("No path found!").len() > 2);
+	let (_rrttree, path_result) = rrt.plan([0.0, 0.0], &vec![1.0], goal, 0.1, 1.0, 1000);
+	assert!(path_result.as_ref().expect("No path found!").len() > 2);
 }
 
 #[test]
@@ -315,14 +285,14 @@ fn test_plan_on_map() {
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 		DiscreteSampler::new(),
 		&m);
-	let _path_result = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.05, 5.0, 10000);
+	let (rrttree, path_result) = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.05, 5.0, 5000);
 
-	//assert!(path_result.as_ref().expect("No path found!").len() > 2);
+	assert!(path_result.as_ref().expect("No path found!").len() > 2);
 	let mut m = m.clone();
 	m.resize(5);
 
-	m.draw_tree(&rrt.rrttree);
-	//m.draw_path(path_result.unwrap());
+	m.draw_tree(&rrttree);
+	m.draw_path(path_result.unwrap());
 	m.draw_zones_observability();
 	m.save("results/test_rrt_on_map.pgm")
 }

@@ -171,16 +171,15 @@ impl Map {
 			let pixel = self.img.get_pixel(j as u32, i as u32);
 			match pixel[0] {
 				255 => {},
-				0 => {return Belief::Obstacle; },
+				0 => return Belief::Obstacle,
 				_ => {	
 					let zone_index = self.get_zone_index(i as u32, j as u32).unwrap();
 					if let Belief::Zone(previous) = traversed_space {
-						if zone_index != previous {
-						panic!("multiple zone traversal not supported"); }
+						assert!(zone_index == previous, "multiple zone traversal not supported");
 					}				
 					traversed_space = Belief::Zone(zone_index);
 				}
-			};
+			}
 		}
 
 		traversed_space
@@ -397,21 +396,19 @@ impl Map {
 } 
 
 impl RRTFuncs<2> for Map {
-	fn state_validator(&self, state: &[f64; 2]) -> Option<WorldMask> {
+	fn state_validator(&self, state: &[f64; 2]) -> Reachable {
 		match self.is_state_valid(state) {
-			Belief::Zone(zone_index) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
-			Belief::Free => {Some(bitvec![1; self.n_worlds])},
-			Belief::Obstacle => None
+			Belief::Free => Reachable::Always,
+			Belief::Obstacle => Reachable::Never,
+			Belief::Zone(zone) => Reachable::Restricted(&self.zones_to_worlds[zone]),
 		}
 	}
 
 	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Reachable {
-		let space = self.get_traversed_space(a, b);
-
-		match space {
-			Belief::Free => { Reachable::Always },
-			Belief::Obstacle => { Reachable::Never },
-			Belief::Zone(zone) => { Reachable::Restricted(&self.zones_to_worlds[zone]) }
+		match self.get_traversed_space(a, b) {
+			Belief::Free => Reachable::Always,
+			Belief::Obstacle => Reachable::Never,
+			Belief::Zone(zone) => Reachable::Restricted(&self.zones_to_worlds[zone]),
 		}
 	}
 
