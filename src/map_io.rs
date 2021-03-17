@@ -567,10 +567,10 @@ fn clone_draw_line_and_save_image() {
 	m.draw_line([-0.5, -0.5], [0.5, 0.5], GRAY5, 1.0);
 	m.draw_path(&[[-0.3, -0.4], [0.0, 0.0] ,[0.4, 0.3]].to_vec(), GRAY5);
 
-	m.save("results/tmp.pgm");
+	m.save("results/tmp");
 
-	assert!(Path::new("results/tmp.pgm").exists());
-	fs::remove_file("results/tmp.pgm").unwrap();
+	assert!(Path::new("results/tmp.png").exists());
+	fs::remove_file("results/tmp.png").unwrap();
 }
 // MAP 1 zone
 #[test]
@@ -724,9 +724,9 @@ fn test_resize_image() {
 	let mut m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.resize(2);
 	
-	m.save("results/tmp.pgm");
-	assert!(Path::new("results/tmp.pgm").exists());
-	fs::remove_file("results/tmp.pgm").unwrap();
+	m.save("results/tmp");
+	assert!(Path::new("results/tmp.png").exists());
+	fs::remove_file("results/tmp.png").unwrap();
 }
 
 #[test]

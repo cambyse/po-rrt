@@ -307,6 +307,6 @@ fn test_plan_on_map() {
 		m.draw_path(path, crate::map_io::colors::color_map(*belief_id));
 	}
 	m.draw_zones_observability();
-	m.save("results/test_rrt_on_map.pgm")
+	m.save("results/test_rrt_on_map")
 }
 }

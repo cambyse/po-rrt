@@ -455,7 +455,7 @@ fn test_plan_on_map2_pomdp() {
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map2_pomdp.pgm");
+	m2.save("results/test_plan_on_map2_pomdp");
 }
 
 #[test]
@@ -480,7 +480,7 @@ fn test_plan_on_map4_pomdp() {
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map4_pomdp.pgm");
+	m2.save("results/test_plan_on_map4_pomdp");
 }
 
 #[test]
@@ -505,7 +505,7 @@ fn test_plan_on_map1_fov_pomdp() {
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map1_fov_pomdp.pgm");
+	m2.save("results/test_plan_on_map1_fov_pomdp");
 }
 
 #[test]
@@ -530,7 +530,7 @@ fn test_plan_on_map2_fov_pomdp() {
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map2_fov_pomdp.pgm");
+	m2.save("results/test_plan_on_map2_fov_pomdp");
 }
 
 #[test]
@@ -560,7 +560,7 @@ fn test_plan_on_map2_qmdp() {
 	for (i, path) in enumerate(&paths) {
 		full.draw_path(path, crate::map_io::colors::color_map(i));
 	}
-	full.save("results/test_plan_on_map2_qmdp.pgm");
+	full.save("results/test_plan_on_map2_qmdp");
 }
 
 #[test]
@@ -594,7 +594,7 @@ fn test_plan_on_map1_2_goals() {
 		full.draw_path(&path, crate::map_io::colors::color_map(i));
 	}
 
-	full.save("results/test_plan_on_map1_2_goals.pgm");
+	full.save("results/test_plan_on_map1_2_goals");
 }
 
 #[test]
