@@ -1,6 +1,7 @@
 *.lock
 target/
 results/*.pgm
+results/*.png
 results/*.json
 *.out.*
 .vscode/
