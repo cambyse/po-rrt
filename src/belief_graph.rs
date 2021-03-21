@@ -4,8 +4,6 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*; // tests only
-use crate::prm_graph::*;
-use crate::prm_reachability::*;
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
 
@@ -16,7 +14,7 @@ pub enum BeliefNodeType {
     Observation,
 }
 
-pub struct PRMBeliefNode<const N: usize> {
+pub struct BeliefNode<const N: usize> {
 	pub state: [f64; N],
     pub belief_state: BeliefState,
     pub belief_id: usize,
@@ -25,16 +23,16 @@ pub struct PRMBeliefNode<const N: usize> {
     pub node_type: BeliefNodeType,
 }
 
-pub struct PRMBeliefGraph<const N: usize> {
-    pub belief_nodes: Vec<PRMBeliefNode<N>>,
+pub struct BeliefGraph<const N: usize> {
+    pub belief_nodes: Vec<BeliefNode<N>>,
     pub reachable_belief_states: Vec<Vec<f64>>
 }
 
-impl<const N: usize> PRMBeliefGraph<N> {
+impl<const N: usize> BeliefGraph<N> {
 	pub fn add_node(&mut self, state: [f64; N], belief_state: BeliefState, belief_id: usize, node_type: BeliefNodeType) -> usize {
         let id = self.belief_nodes.len();
         self.belief_nodes.push(
-            PRMBeliefNode{
+            BeliefNode{
                 state,
                 belief_state,
                 belief_id,
@@ -62,7 +60,7 @@ pub fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -
     child_bs.iter().zip(parent_bs).fold(0.0, |s, (p, q)| s + if *p > 0.0 { *q } else { 0.0 } )
 }
 
-pub fn conditional_dijkstra<F: PRMFuncs<N>, const N: usize>(graph: &PRMBeliefGraph<N>, final_node_ids: &[usize], m: &F) -> Vec<f64> {
+pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_ids: &[usize], cost_evaluator: impl Fn(&[f64; N], &[f64; N]) -> f64) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
     let mut dist = vec![std::f64::INFINITY; graph.belief_nodes.len()];
@@ -95,13 +93,13 @@ pub fn conditional_dijkstra<F: PRMFuncs<N>, const N: usize>(graph: &PRMBeliefGra
             let mut alternative = 0.0;
             if u.node_type == BeliefNodeType::Action {
                 let v = &graph.belief_nodes[v_id];
-                alternative += m.cost_evaluator(&u.state, &v.state) + dist[v_id]
+                alternative += cost_evaluator(&u.state, &v.state) + dist[v_id]
             }
             else if u.node_type == BeliefNodeType::Observation {
                 for &vv_id in &u.children {
                     let vv = &graph.belief_nodes[vv_id];
                     let p = transition_probability(&u.belief_state, &vv.belief_state);
-                    alternative += p * (m.cost_evaluator(&u.state, &vv.state) + dist[vv_id]);
+                    alternative += p * (cost_evaluator(&u.state, &vv.state) + dist[vv_id]);
                 }
             }
             else {
@@ -123,7 +121,7 @@ mod tests {
 
 use super::*;
 
-fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> PRMBeliefGraph<2> {
+fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> BeliefGraph<2> {
     /*
      G
     / \
@@ -179,7 +177,7 @@ fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> PRMBeliefGraph<2> {
 
     bs: [0.0, 1.0]
     */
-    let mut belief_graph = PRMBeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: Vec::new()};
+    let mut belief_graph = BeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: Vec::new()};
     
     // nodes
     belief_graph.add_node([0.0, 1.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 0
@@ -233,10 +231,7 @@ fn test_conditional_dijkstra() {
 
     let graph = create_graph_1(&belief_states);
     
-    struct Funcs {}
-    impl PRMFuncs<2> for Funcs {}
-    
-    let dists = conditional_dijkstra(&graph, &vec![3, 10, 16], &Funcs{});
+    let dists = conditional_dijkstra(&graph, &vec![3, 10, 16], |a: &[f64; 2], b: &[f64; 2]| norm2(a, b) );
     assert!(dists[0] < dists[1]);
     assert!(dists[0] < dists[2]);
     assert!(dists[4] < dists[0]);

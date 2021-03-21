@@ -64,6 +64,7 @@ impl<'a, const N: usize> RRTTree<N> {
 			.position(|bs| bs == belief_state)
 			.unwrap_or_else(|| {
 				let belief_id = self.belief_states.len();
+				println!("new belief!:{}, {:?}", belief_id, belief_state);
 				self.belief_states.push(belief_state.clone());
 				belief_id
 			})
@@ -86,8 +87,12 @@ impl<'a, const N: usize> RRTTree<N> {
 		let compute_distance_from_root = |mut node_id: usize| {
 			let mut cost = 0.0;
 			while let Some(parent_link) = &self.nodes[node_id].parent {
+				if self.nodes[node_id].belief_state_id != self.nodes[parent_link.id].belief_state_id {
+					break;
+				}
 				cost += parent_link.dist;
 				node_id = parent_link.id;
+
 			}
 			cost
 		};
@@ -268,6 +273,32 @@ mod tests {
 use super::*;
 
 #[test]
+fn test_plan_on_map() {
+	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_zone_ids.pgm", 0.2);
+
+	fn goal(state: &[f64; 2]) -> bool {
+		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
+	}	
+
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		DiscreteSampler::new(),
+		&m);
+	let (rrttree, paths) = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.05, 5.0, 30000);
+	assert!(!paths.is_empty(), "No path found!");
+
+	let mut m = m.clone();
+	m.resize(5);
+
+	m.draw_tree(&rrttree);
+	for (belief_id, path) in &paths {
+		m.draw_path(path, crate::map_io::colors::color_map(*belief_id));
+	}
+	m.draw_zones_observability();
+	m.save("results/test_rrt_on_map")
+}
+
+#[test]
 fn test_plan_empty_space() {
 	struct Funcs {}
 	impl RRTFuncs<2> for Funcs {}
@@ -284,29 +315,4 @@ fn test_plan_empty_space() {
 	assert!(!paths.is_empty(), "No path found!");
 }
 
-#[test]
-fn test_plan_on_map() {
-	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm", 0.2);
-
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
-	}	
-
-	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
-		DiscreteSampler::new(),
-		&m);
-	let (rrttree, paths) = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.05, 5.0, 15000);
-	assert!(!paths.is_empty(), "No path found!");
-
-	let mut m = m.clone();
-	m.resize(5);
-
-	m.draw_tree(&rrttree);
-	for (belief_id, path) in &paths {
-		m.draw_path(path, crate::map_io::colors::color_map(*belief_id));
-	}
-	m.draw_zones_observability();
-	m.save("results/test_rrt_on_map")
-}
 }

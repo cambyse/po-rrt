@@ -6,7 +6,7 @@ use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use crate::prm_graph::*;
 use crate::prm_reachability::*;
-use crate::prm_belief_graph::*;
+use crate::belief_graph::*;
 use bitvec::prelude::*;
 use std::{collections::HashMap, ops::Index};
 
@@ -26,7 +26,7 @@ pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	cost_to_goals: Vec<Vec<f64>>,
 	// pomdp
 	node_to_belief_nodes: Vec<Vec<Option<usize>>>,
-	belief_graph: PRMBeliefGraph<N>,
+	belief_graph: BeliefGraph<N>,
 	expected_costs_to_goals: Vec<f64>
 }
 
@@ -43,7 +43,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   conservative_reachability: Reachability::new(), 
 			   cost_to_goals: Vec::new(),
 			   node_to_belief_nodes: Vec::new(),
-		       belief_graph: PRMBeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: Vec::new()},
+		       belief_graph: BeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: Vec::new()},
 			   expected_costs_to_goals: Vec::new() }
 	}
 
@@ -159,7 +159,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn build_belief_graph(&mut self, start_belief_state: &BeliefState) {
 		// build belief state graph
 		let reachable_belief_states = self.fns.reachable_belief_states(start_belief_state);
-		let mut belief_space_graph: PRMBeliefGraph<N> = PRMBeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
+		let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
 		let mut node_to_belief_nodes: Vec<Vec<Option<usize>>> = vec![vec![None; reachable_belief_states.len()]; self.graph.n_nodes()];
 		
 		// build nodes
@@ -234,7 +234,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 
 		// DP in belief state
-		self.expected_costs_to_goals = conditional_dijkstra(&self.belief_graph, &final_belief_state_node_ids, self.fns);
+		self.expected_costs_to_goals = conditional_dijkstra(&self.belief_graph, &final_belief_state_node_ids, |a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
 	}
 
 	pub fn extract_policy(&self) -> Policy<N> {
@@ -429,7 +429,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 #[cfg(test)]
 mod tests {
 
-use crate::prm_belief_graph;
+use crate::belief_graph;
 
     use super::*;
 

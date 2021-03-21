@@ -312,6 +312,23 @@ impl Map {
 		for c in &rrttree.nodes {
 			if let Some(ref parent_link) = c.parent {
 				let parent = &rrttree.nodes[parent_link.id];
+								
+				let belief_id = 8;
+
+				// roots
+				if c.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
+					self.draw_circle(&c.state, 0.01, PURPLE);
+				}
+
+				// observations
+				if parent.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
+					self.draw_circle(&c.state, 0.025, NAVY);
+				}
+
+				if c.belief_state_id != belief_id || parent.belief_state_id != belief_id {
+					continue;
+				}
+
 				let color = color_map(c.belief_state_id);
 				self.draw_line(parent.state, c.state, color, 0.5);
 			}
@@ -454,7 +471,9 @@ impl RRTFuncs<2> for Map {
 	fn observe_new_beliefs(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
 		let mut output_beliefs = self.observe_impl(state, belief_state);
 
-		output_beliefs.remove(0);
+		if output_beliefs.len() == 1 {
+			output_beliefs.remove(0);
+		}
 
 		output_beliefs
 	}
