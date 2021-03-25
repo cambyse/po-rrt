@@ -161,7 +161,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 			let sampled_belief_id = self.discrete_sampler.sample(rrttree.belief_states.len());
 
 			// XXX nearest_neighbor_filtered can return the root even if the filter closure disagrees.
-			let canonical_neighbor = kdtree.nearest_neighbor_filtered(new_state, |id| rrttree.nodes[id].belief_state_id == sampled_belief_id); // log n
+			let canonical_neighbor = kdtree.nearest_neighbor_filtered(new_state, |id| rrttree.nodes[id].belief_state_id == sampled_belief_id); // n log n
 			steer(&canonical_neighbor.state, &mut new_state, max_step);
 
 			let belief_state = &rrttree.belief_states[sampled_belief_id];

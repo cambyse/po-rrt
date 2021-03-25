@@ -471,7 +471,8 @@ impl RRTFuncs<2> for Map {
 	fn observe_new_beliefs(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
 		let mut output_beliefs = self.observe_impl(state, belief_state);
 
-		if output_beliefs.len() == 1 {
+		if output_beliefs.len() > 1 && output_beliefs[0] == *belief_state {
+
 			output_beliefs.remove(0);
 		}
 
