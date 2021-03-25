@@ -25,14 +25,14 @@ pub struct BeliefNode<const N: usize> {
 }
 
 pub struct BeliefGraph<const N: usize> {
-    pub belief_nodes: Vec<BeliefNode<N>>,
+    pub nodes: Vec<BeliefNode<N>>,
     pub reachable_belief_states: Vec<Vec<f64>>
 }
 
 impl<const N: usize> BeliefGraph<N> {
 	pub fn add_node(&mut self, state: [f64; N], belief_state: BeliefState, belief_id: usize, node_type: BeliefNodeType) -> usize {
-        let id = self.belief_nodes.len();
-        self.belief_nodes.push(
+        let id = self.nodes.len();
+        self.nodes.push(
             BeliefNode{
                 state,
                 belief_state,
@@ -46,8 +46,8 @@ impl<const N: usize> BeliefGraph<N> {
     }
 
 	pub fn add_edge(&mut self, from_id: usize, to_id: usize) {
-		self.belief_nodes[from_id].children.push(to_id);
-		self.belief_nodes[to_id].parents.push(from_id);
+		self.nodes[from_id].children.push(to_id);
+		self.nodes[to_id].parents.push(from_id);
     }
     
     #[allow(clippy::style)]
@@ -64,11 +64,11 @@ pub fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -
 pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_ids: &[usize], cost_evaluator: impl Fn(&[f64; N], &[f64; N]) -> f64) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
-    let mut dist = vec![std::f64::INFINITY; graph.belief_nodes.len()];
+    let mut dist = vec![std::f64::INFINITY; graph.nodes.len()];
 	let mut q = PriorityQueue::new();
     
     // debug
-    println!("number of belief nodes:{}", graph.belief_nodes.len());
+    println!("number of belief nodes:{}", graph.nodes.len());
     // 
 
 	for &id in final_node_ids {
@@ -88,17 +88,17 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
         }
         //
 
-		for &u_id in &graph.belief_nodes[v_id].parents {
-            let u = &graph.belief_nodes[u_id];
+		for &u_id in &graph.nodes[v_id].parents {
+            let u = &graph.nodes[u_id];
 
             let mut alternative = 0.0;
             if u.node_type == BeliefNodeType::Action {
-                let v = &graph.belief_nodes[v_id];
+                let v = &graph.nodes[v_id];
                 alternative += cost_evaluator(&u.state, &v.state) + dist[v_id]
             }
             else if u.node_type == BeliefNodeType::Observation {
                 for &vv_id in &u.children {
-                    let vv = &graph.belief_nodes[vv_id];
+                    let vv = &graph.nodes[vv_id];
                     let p = transition_probability(&u.belief_state, &vv.belief_state);
                     alternative += p * (cost_evaluator(&u.state, &vv.state) + dist[vv_id]);
                 }
@@ -118,14 +118,14 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
 }
 
 pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_goals: &Vec<f64>) -> Policy<N> {
-    if graph.belief_nodes.is_empty() {
+    if graph.nodes.is_empty() {
         panic!("no belief state graph!");
     }
 
     let mut policy: Policy<N> = Policy{nodes: Vec::new()};
     let mut lifo: Vec<(usize, usize)> = Vec::new(); // policy_node, belief_graph_node
 
-    policy.add_node(&graph.belief_nodes[0].state, &graph.belief_nodes[0].belief_state);
+    policy.add_node(&graph.nodes[0].state, &graph.nodes[0].belief_state);
 
     lifo.push((0, 0));
 
@@ -141,7 +141,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
         let children_ids = get_best_expected_children(graph, belief_node_id, expected_costs_to_goals);
 
         for child_id in children_ids {
-            let child = &graph.belief_nodes[child_id];
+            let child = &graph.nodes[child_id];
             let child_policy_id = policy.add_node(&child.state, &child.belief_state);
             policy.add_edge(policy_node_id, child_policy_id);
 
@@ -154,12 +154,12 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
 }
 
 pub fn get_best_expected_children<const N: usize>(graph: &BeliefGraph<N>, belief_node_id: usize, expected_costs_to_goals: &Vec<f64>) -> Vec<usize> {
-    let bs_node = &graph.belief_nodes[belief_node_id];
+    let bs_node = &graph.nodes[belief_node_id];
     
     // cluster children by target belief state
     let mut belief_to_children = HashMap::new();
-    for &child_id in &graph.belief_nodes[belief_node_id].children {
-        let child = &graph.belief_nodes[child_id];
+    for &child_id in &graph.nodes[belief_node_id].children {
+        let child = &graph.nodes[child_id];
 
         //println!("child:{}, belief_state:{:?}", child_id, child.belief_state);
         belief_to_children.entry(child.belief_id).or_insert_with(Vec::new);
@@ -171,7 +171,7 @@ pub fn get_best_expected_children<const N: usize>(graph: &BeliefGraph<N>, belief
 
     for belief_id in belief_to_children.keys() {
         let mut best_id = belief_to_children[belief_id][0].0;
-        let p = transition_probability(&bs_node.belief_state, &graph.belief_nodes[best_id].belief_state);
+        let p = transition_probability(&bs_node.belief_state, &graph.nodes[best_id].belief_state);
 
         assert!(p > 0.0);
         
@@ -254,7 +254,7 @@ fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> BeliefGraph<2> {
 
     bs: [0.0, 1.0]
     */
-    let mut belief_graph = BeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: Vec::new()};
+    let mut belief_graph = BeliefGraph{nodes: Vec::new(), reachable_belief_states: Vec::new()};
     
     // nodes
     belief_graph.add_node([0.0, 1.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 0

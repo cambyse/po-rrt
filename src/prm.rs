@@ -43,7 +43,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   conservative_reachability: Reachability::new(), 
 			   cost_to_goals: Vec::new(),
 			   node_to_belief_nodes: Vec::new(),
-		       belief_graph: BeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: Vec::new()},
+		       belief_graph: BeliefGraph{nodes: Vec::new(), reachable_belief_states: Vec::new()},
 			   expected_costs_to_goals: Vec::new() }
 	}
 
@@ -159,7 +159,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn build_belief_graph(&mut self, start_belief_state: &BeliefState) {
 		// build belief state graph
 		let reachable_belief_states = self.fns.reachable_belief_states(start_belief_state);
-		let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{belief_nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
+		let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
 		let mut node_to_belief_nodes: Vec<Vec<Option<usize>>> = vec![vec![None; reachable_belief_states.len()]; self.graph.n_nodes()];
 		
 		// build nodes
@@ -190,7 +190,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 						let child_belief_node_id = node_to_belief_nodes[id][child_belief_state_id];
 
 						if let (Some(parent_id), Some(child_id)) = (parent_belief_node_id, child_belief_node_id) {
-							belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Observation;
+							belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Observation;
 							belief_space_graph.add_edge(parent_id, child_id);
 						}
 					}
@@ -203,7 +203,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			for (belief_id, _) in reachable_belief_states.iter().enumerate() {
 				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
 
-				if parent_belief_node_id.is_some() && belief_space_graph.belief_nodes[parent_belief_node_id.unwrap()].node_type == BeliefNodeType::Observation {
+				if parent_belief_node_id.is_some() && belief_space_graph.nodes[parent_belief_node_id.unwrap()].node_type == BeliefNodeType::Observation {
 					continue;
 				}
 
@@ -211,7 +211,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					let child_belief_node_id = node_to_belief_nodes[child_id][belief_id];
 
 					if let (Some(parent_id), Some(child_id)) = (parent_belief_node_id, child_belief_node_id) {
-						belief_space_graph.belief_nodes[parent_id].node_type = BeliefNodeType::Action;
+						belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Action;
 						belief_space_graph.add_edge(parent_id, child_id);
 					}
 				}
@@ -558,16 +558,16 @@ fn test_build_belief_graph() {
 	//
 
 	let _policy = prm.plan_belief_state(&vec![0.5, 0.5]);	
-	assert_eq!(prm.belief_graph.belief_nodes[6].children, vec![7, 8]); // observation transitions
-	assert!(!prm.belief_graph.belief_nodes[7].children.contains(&6)); // observation is irreversible
-	assert!(!prm.belief_graph.belief_nodes[8].children.contains(&6)); // observation is irreversible
+	assert_eq!(prm.belief_graph.nodes[6].children, vec![7, 8]); // observation transitions
+	assert!(!prm.belief_graph.nodes[7].children.contains(&6)); // observation is irreversible
+	assert!(!prm.belief_graph.nodes[8].children.contains(&6)); // observation is irreversible
 
-	for (id, node) in prm.belief_graph.belief_nodes.iter().enumerate() { // belief jump only at observation points
+	for (id, node) in prm.belief_graph.nodes.iter().enumerate() { // belief jump only at observation points
 		if id == 6 {
 			continue;
 		}
 		for &child_id in &node.children {
-			assert_eq!(node.belief_id, prm.belief_graph.belief_nodes[child_id].belief_id);
+			assert_eq!(node.belief_id, prm.belief_graph.nodes[child_id].belief_id);
 		}
 	}
 
