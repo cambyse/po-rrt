@@ -4,6 +4,7 @@ use crate::{common::*};
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
+use crate::belief_graph::*;
 use std::{cmp::min, collections::{self, HashSet}};
 
 #[derive(PartialEq, Eq, Hash)]
@@ -35,6 +36,7 @@ pub struct RRTNode<const N: usize> {
 	pub id: usize,
 	pub state: [f64; N],
 	pub belief_state_id: usize,
+	pub node_type: BeliefNodeType,
 	pub parent: Option<ParentLink>,
 }
 
@@ -43,14 +45,53 @@ pub struct RRTTree<const N: usize> {
 	pub belief_states: Vec<BeliefState>
 }
 
+// Belief graph trait
+impl<const N: usize> IBeliefNode<N> for RRTNode<N> {
+    fn state(&self) -> &[f64; N] {
+        &self.state
+    }
+
+    fn belief_id(&self) -> usize {
+        self.belief_state_id
+    }
+
+    fn node_type(&self) -> &BeliefNodeType {
+        &self.node_type
+	}
+	
+	fn children(&self) -> &[usize] {
+        &[]
+    }
+
+	fn parents(&self) -> &[usize] {
+		match self.parent {
+			Some(parent) => &[parent.id],
+			None => &[]
+		}
+    }
+}
+
+impl<const N: usize> IBeliefGraph<N> for RRTTree<N> {
+	fn node(&self, id:usize) -> &dyn IBeliefNode<N> {
+        &self.nodes[id]
+    }
+	fn n_nodes(&self) -> usize {
+        self.nodes.len()
+    }
+    fn belief_state(&self, id:usize) -> &BeliefState {
+        &self.belief_states[self.nodes[id].belief_state_id]
+    }
+}
+//
+
 impl<'a, const N: usize> RRTTree<N> {
 	fn new() -> Self {
 		Self { nodes: vec![], belief_states: Default::default() }
 	}
 
-	fn add_node(&mut self, state: [f64; N], belief_state_id: usize, parent: Option<ParentLink>) -> usize {
+	fn add_node(&mut self, state: [f64; N], belief_state_id: usize, node_type: BeliefNodeType, parent: Option<ParentLink>) -> usize {
 		let id = self.nodes.len();
-		let node = RRTNode { id, state, belief_state_id, parent };
+		let node = RRTNode { id, state, belief_state_id, node_type, parent };
 		self.nodes.push(node);
 		assert!(belief_state_id < self.belief_states.len());
 		id
@@ -153,7 +194,7 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 
 		{
 			let belief_id = rrttree.maybe_add_belief_state(start_belief_state);
-			rrttree.add_node(start, belief_id, None); // root node
+			rrttree.add_node(start, belief_id, BeliefNodeType::Action, None); // root node
 		}
 
 		for _ in 0..n_iter_max {
@@ -212,8 +253,10 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 						.unwrap();
 
 				// Step 5: Add the node new_state in the trees
+				let belief_state = &rrttree.belief_states[sampled_belief_id];
+				let children_belief_states = self.fns.observe_new_beliefs(&new_state, &belief_state);
 				let parent_link = ParentLink { id: parent_id, dist: parent_to_new_state_dist };
-				let new_node_id = rrttree.add_node(new_state, sampled_belief_id, Some(parent_link));
+				let new_node_id = rrttree.add_node(new_state, sampled_belief_id, if children_belief_states.len() > 1 { BeliefNodeType::Observation } else { BeliefNodeType::Action }, Some(parent_link));
 				kdtree.add(new_state, new_node_id);
 
 				// Step 6: Reparent neighbors that could be better with the new_state node as a parent.
@@ -231,10 +274,9 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 					}
 				}
 
-				let belief_state = &rrttree.belief_states[sampled_belief_id];
-				for child_belief_state in self.fns.observe_new_beliefs(&new_state, &belief_state) {
+				for child_belief_state in children_belief_states {
 					let children_belief_state_id = rrttree.maybe_add_belief_state(&child_belief_state);
-					let new_node_id = rrttree.add_node(new_state, children_belief_state_id, Some(parent_link));
+					let new_node_id = rrttree.add_node(new_state, children_belief_state_id, BeliefNodeType::Action, Some(parent_link));
 					kdtree.add(new_state, new_node_id);
 				}
 
