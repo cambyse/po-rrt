@@ -384,26 +384,30 @@ fn test_plan_on_map1() {
 		(state[0] - 0.5).abs() < 0.05 && (state[1] - 0.35).abs() < 0.05
 	}	
 
-	/*
 	struct FakeSampler {
-
+		index: usize,
 	}
 
 	impl SampleFuncs<2> for FakeSampler{
 		fn sample_state(&mut self) -> [f64; 2] {
-			[0.0, 0.0]
+			const SAMPLES: &[[f64; 2]] = &[[0.0, 0.0]];
+			SAMPLES[self.index]
 		}
 	
 		fn sample_discrete(&mut self, n: usize) -> usize {
-			0
+			const SAMPLES: &[usize] = &[0];
+			let sample = SAMPLES[self.index];
+			self.index += 1;
+			sample
 		}
 	}
-	*/
-	
+	let mut samplers = FakeSampler{index: 0};
+
+	/*
 	let mut samplers = RRTDefaultSamplers {
 		state_sampler: ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 		belief_state_sampler: DiscreteSampler::new(),
-	};
+	};*/
 
 	let mut rrt = RRT::new(
 		&mut samplers,
