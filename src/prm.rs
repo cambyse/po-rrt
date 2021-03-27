@@ -375,14 +375,14 @@ fn test_plan_on_map2_pomdp() {
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
-	let policy = prm.plan_belief_state(&vec![0.2, 0.2, 0.2, 0.4]);
+	let policy = prm.plan_belief_state(&vec![0.1, 0.1, 0.1, 0.7]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map2_pomdp");
+	m2.save("results/test_prm_on_map2_pomdp");
 }
 
 #[test]
@@ -398,7 +398,7 @@ fn test_plan_on_map4_pomdp() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.075, 5.0, 1000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_state( &vec![1.0/16.0; 16]);
 
@@ -407,7 +407,7 @@ fn test_plan_on_map4_pomdp() {
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map4_pomdp");
+	m2.save("results/test_prm_on_map4_pomdp");
 }
 
 #[test]
@@ -432,7 +432,7 @@ fn test_plan_on_map1_fov_pomdp() {
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map1_fov_pomdp");
+	m2.save("results/test_prm_on_map1_fov_pomdp");
 }
 
 #[test]
@@ -457,7 +457,7 @@ fn test_plan_on_map2_fov_pomdp() {
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_plan_on_map2_fov_pomdp");
+	m2.save("results/test_prm_on_map2_fov_pomdp");
 }
 
 #[test]
@@ -487,7 +487,7 @@ fn test_plan_on_map2_qmdp() {
 	for (i, path) in enumerate(&paths) {
 		full.draw_path(path, crate::map_io::colors::color_map(i));
 	}
-	full.save("results/test_plan_on_map2_qmdp");
+	full.save("results/test_prm_on_map2_qmdp");
 }
 
 #[test]
@@ -521,7 +521,7 @@ fn test_plan_on_map1_2_goals() {
 		full.draw_path(&path, crate::map_io::colors::color_map(i));
 	}
 
-	full.save("results/test_plan_on_map1_2_goals");
+	full.save("results/test_prm_on_map1_2_goals");
 }
 
 #[test]
