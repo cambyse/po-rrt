@@ -308,29 +308,29 @@ impl Map {
 		}
 	}
 
-	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
+	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>, belief_id: Option<usize>) {
 		for c in &rrttree.nodes {
 			if let Some(ref parent_link) = c.parent {
 				let parent = &rrttree.nodes[parent_link.id];
-								
-				let belief_id = 8;
+							
+				if let Some(belief_id) = belief_id {
+					// roots
+					if c.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
+						self.draw_circle(&c.state, 0.01, PURPLE);
+					}
 
-				// roots
-				if c.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
-					self.draw_circle(&c.state, 0.01, PURPLE);
-				}
+					// observations
+					if parent.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
+						self.draw_circle(&c.state, 0.025, NAVY);
+					}
 
-				// observations
-				if parent.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
-					self.draw_circle(&c.state, 0.025, NAVY);
-				}
-
-				if c.belief_state_id != belief_id || parent.belief_state_id != belief_id {
-					continue;
+					if c.belief_state_id != belief_id || parent.belief_state_id != belief_id {
+						continue;
+					}
 				}
 
 				let color = color_map(c.belief_state_id);
-				self.draw_line(parent.state, c.state, color, 0.5);
+				self.draw_line(parent.state, c.state, color, 0.3);
 			}
 		}
 	}
@@ -350,7 +350,7 @@ impl Map {
 			}
 			for &child_id in &parent.children {
 				let child = &policy.nodes[child_id];
-				self.draw_line(parent.state, child.state, GRAY3, 1.0);
+				self.draw_line(parent.state, child.state, BLACK, 1.0);
 			}
 		}
 	}
@@ -389,7 +389,7 @@ impl Map {
 		for from in &graph.nodes {
 			for to_id in from.children.clone() {
 				let to  = &graph.nodes[to_id];
-				self.draw_line(from.state, to.state, GRAY5, 0.5);
+				self.draw_line(from.state, to.state, GRAY5, 0.3);
 			}
 		}
 	}
@@ -472,7 +472,6 @@ impl RRTFuncs<2> for Map {
 		let mut output_beliefs = self.observe_impl(state, belief_state);
 
 		if output_beliefs.len() > 1 && output_beliefs[0] == *belief_state {
-
 			output_beliefs.remove(0);
 		}
 
