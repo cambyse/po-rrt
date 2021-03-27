@@ -11,7 +11,12 @@ fn rrt(max_iter: u32) {
 		(state[0] - 0.9).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-    let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &Funcs{});
+	let mut samplers = RRTDefaultSamplers {
+		state_sampler: ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		belief_state_sampler: DiscreteSampler::new(),
+	};
+
+    let mut rrt = RRT::new(&mut samplers, &Funcs{});
     let _ = rrt.plan([0.0, 0.0], &vec![0.25; 4], goal, 0.1, 10.0, max_iter);
 }
 
@@ -20,7 +25,12 @@ fn rrt_map(map: &Map, max_iter: u32) {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}
 
-    let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), map);
+	let mut samplers = RRTDefaultSamplers {
+		state_sampler: ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		belief_state_sampler: DiscreteSampler::new(),
+	};
+
+    let mut rrt = RRT::new(&mut samplers, map);
     let _ = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.1, 10.0, max_iter);
 }
 
