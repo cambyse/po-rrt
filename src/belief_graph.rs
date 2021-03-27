@@ -6,7 +6,7 @@ use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
-use std::{collections::HashMap, ops::Index};
+use std::{collections::BTreeMap, ops::Index};
 
 pub trait IBeliefNode<const N: usize> {
     fn state(&self) -> &[f64; N];
@@ -137,9 +137,14 @@ pub fn conditional_dijkstra<const N: usize>(graph: &impl IBeliefGraph<N>, final_
             println!("queue size:{}, v_id:{}", q.len(), v_id);
         }
         //
-
 		for &u_id in graph.node(v_id).parents() {
             let u = graph.node(u_id);
+
+            //
+            //if u_id == 10 {
+            //    println!("here!");
+            //}
+            //
 
             let mut alternative = 0.0;
             if *u.node_type() == BeliefNodeType::Action {
@@ -157,7 +162,7 @@ pub fn conditional_dijkstra<const N: usize>(graph: &impl IBeliefGraph<N>, final_
                     alternative += p * (cost_evaluator(u.state(), vv.state()) + dist[vv_id]);
                 }
 
-                //println!("alternative: {}", alternative);
+                println!("alternative for : {} = {}", u_id, alternative);
             }
             else {
                 panic!("node type should be know at this stage!");
@@ -209,10 +214,10 @@ pub fn extract_policy<const N: usize>(graph: &impl IBeliefGraph<N>, expected_cos
         panic!("no belief state graph!");
     }
 
-    let mut policy: Policy<N> = Policy{nodes: Vec::new()};
+    let mut policy: Policy<N> = Policy{nodes: Vec::new(), leafs: Vec::new()};
     let mut lifo: Vec<(usize, usize)> = Vec::new(); // policy_node, belief_graph_node
 
-    policy.add_node(&graph.node(0).state(), &graph.belief_state(0));
+    policy.add_node(&graph.node(0).state(), &graph.belief_state(0), false);
 
     lifo.push((0, 0));
 
@@ -223,12 +228,13 @@ pub fn extract_policy<const N: usize>(graph: &impl IBeliefGraph<N>, expected_cos
 
         for child_id in children_ids {
             let child = &graph.node(child_id);
-            let child_policy_id = policy.add_node(child.state(), graph.belief_state(child_id));
+            let is_leaf = expected_costs_to_goals[child_id] == 0.0;
+            let child_policy_id = policy.add_node(child.state(), graph.belief_state(child_id), is_leaf);
             policy.add_edge(policy_node_id, child_policy_id);
 
             //println!("add node, belief {:?}, cost: {:?}", &graph.belief_state(child_id), &expected_costs_to_goals[child_id]);
 
-            if expected_costs_to_goals[child_id] > 0.0 {
+            if ! is_leaf {
                 lifo.push((child_policy_id, child_id));
             }
         }
@@ -238,7 +244,7 @@ pub fn extract_policy<const N: usize>(graph: &impl IBeliefGraph<N>, expected_cos
 
 pub fn get_best_expected_children<const N: usize>(graph: &impl IBeliefGraph<N>, belief_node_id: usize, expected_costs_to_goals: &Vec<f64>) -> Vec<usize> {    
     // cluster children by target belief state
-    let mut belief_to_children = HashMap::new();
+    let mut belief_to_children = BTreeMap::new();
     for &child_id in graph.node(belief_node_id).children() {
         let child = graph.node(child_id);
 
@@ -382,13 +388,136 @@ fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> BeliefGraph<2> {
     belief_graph
 }
 
+fn create_graph_2(belief_states: &Vec<Vec<f64>>) -> BeliefGraph<2> {
+    /*
+     K--J--I
+     |     |
+    (C)    H
+     |     |
+     B     G
+     |     |
+     A--E--F
+    
+
+     C is conditionally valid (2 different worlds, one were C is valid, the other one where B is not valid, observation in B)
+    */
+    
+    /*    
+     8--7--6
+     |     |
+    (?)    5
+     |     |
+     1     4
+     |     |
+     0--2--3
+
+    bs: [p, 1.0 - p]
+    */
+
+    /*    
+    17--16--15
+     |      |
+    (x)     14
+     |      |
+     10     13
+     |      |
+     9--11--12
+
+    bs: [1.0, 0.0]
+    */
+
+    /*    
+     27--26--25
+     |       |
+     20      24
+     |       |
+     19      23
+     |       |
+     18--21--22
+
+    bs: [0.0, 1.0]
+    */
+    let mut belief_graph = BeliefGraph{nodes: Vec::new(), reachable_belief_states: Vec::new()};
+    
+    // nodes
+    belief_graph.add_node([0.0, 0.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 0
+    belief_graph.add_node([0.0, 1.0], belief_states[0].clone(), 0, BeliefNodeType::Observation); // 1
+    belief_graph.add_node([1.0, 0.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 2
+    belief_graph.add_node([2.0, 0.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 3
+    belief_graph.add_node([2.0, 1.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 4
+    belief_graph.add_node([2.0, 2.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 5
+    belief_graph.add_node([2.0, 3.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 6
+    belief_graph.add_node([1.0, 3.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 7
+    belief_graph.add_node([0.0, 3.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 8
+
+    belief_graph.add_node([0.0, 0.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 9
+    belief_graph.add_node([0.0, 1.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 10
+    belief_graph.add_node([1.0, 0.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 11
+    belief_graph.add_node([2.0, 0.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 12
+    belief_graph.add_node([2.0, 1.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 13
+    belief_graph.add_node([2.0, 2.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 14
+    belief_graph.add_node([2.0, 3.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 15
+    belief_graph.add_node([1.0, 3.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 16
+    belief_graph.add_node([0.0, 3.0], belief_states[1].clone(), 1, BeliefNodeType::Action); // 17
+
+    belief_graph.add_node([0.0, 0.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 18
+    belief_graph.add_node([0.0, 1.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 19
+    belief_graph.add_node([0.0, 2.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 20
+    belief_graph.add_node([1.0, 0.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 21
+    belief_graph.add_node([2.0, 0.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 22
+    belief_graph.add_node([2.0, 1.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 23
+    belief_graph.add_node([2.0, 2.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 24
+    belief_graph.add_node([2.0, 3.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 25
+    belief_graph.add_node([1.0, 3.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 26
+    belief_graph.add_node([0.0, 3.0], belief_states[1].clone(), 2, BeliefNodeType::Action); // 27
+
+
+    // edges
+    belief_graph.add_edge(0, 1);
+    belief_graph.add_edge(0, 2); belief_graph.add_edge(2, 0);
+    belief_graph.add_edge(2, 3); belief_graph.add_edge(3, 2);
+    belief_graph.add_edge(3, 4); belief_graph.add_edge(4, 3);
+    belief_graph.add_edge(4, 5); belief_graph.add_edge(5, 4);
+    belief_graph.add_edge(5, 6); belief_graph.add_edge(6, 5);
+    belief_graph.add_edge(6, 7); belief_graph.add_edge(7, 6);
+    belief_graph.add_edge(7, 8); belief_graph.add_edge(8, 7);
+
+    belief_graph.add_edge(1, 10); // important, belief transition
+    belief_graph.add_edge(10, 9); belief_graph.add_edge(9, 10);
+    belief_graph.add_edge(9, 11); belief_graph.add_edge(11, 9);
+    belief_graph.add_edge(11, 12); belief_graph.add_edge(12, 11);
+    belief_graph.add_edge(12, 13); belief_graph.add_edge(13, 12);
+    belief_graph.add_edge(13, 14); belief_graph.add_edge(14, 13);
+    belief_graph.add_edge(14, 15); belief_graph.add_edge(15, 14);
+    belief_graph.add_edge(15, 16); belief_graph.add_edge(16, 15);
+    belief_graph.add_edge(16, 17); belief_graph.add_edge(17, 16);
+
+    belief_graph.add_edge(1, 19); // important, belief transition
+    belief_graph.add_edge(19, 20); belief_graph.add_edge(20, 19);
+    belief_graph.add_edge(20, 27); belief_graph.add_edge(27, 20);
+    belief_graph.add_edge(19, 18); belief_graph.add_edge(18, 19);
+    belief_graph.add_edge(18, 21); belief_graph.add_edge(21, 18);
+    belief_graph.add_edge(21, 22); belief_graph.add_edge(22, 21);
+    belief_graph.add_edge(22, 23); belief_graph.add_edge(23, 22);
+    belief_graph.add_edge(23, 24); belief_graph.add_edge(24, 23);
+    belief_graph.add_edge(24, 25); belief_graph.add_edge(25, 24);
+    belief_graph.add_edge(26, 25); belief_graph.add_edge(25, 26);
+    belief_graph.add_edge(27, 26); belief_graph.add_edge(26, 27);
+
+
+    belief_graph
+}
+
 #[test]
-fn test_conditional_dijkstra() {
+fn test_conditional_dijkstra_and_extract_policy_on_graph_1() {
     let belief_states = vec![vec![0.4, 0.6], vec![1.0, 0.0], vec![0.0, 1.0]];
 
     let graph = create_graph_1(&belief_states);
     
     let dists = conditional_dijkstra(&graph, &vec![3, 10, 16], |a: &[f64; 2], b: &[f64; 2]| norm2(a, b) );
+    let policy = extract_policy(&graph, &dists);
+
+    // distance decrease when going towards the goal
     assert!(dists[0] < dists[1]);
     assert!(dists[0] < dists[2]);
     assert!(dists[4] < dists[0]);
@@ -407,7 +536,45 @@ fn test_conditional_dijkstra() {
 
     // belief transition
     assert_eq!(dists[4], belief_states[0][0] * dists[5] + belief_states[0][1] * dists[11]);
+
+    // policy
+    assert_eq!(policy.leafs.len(), 2);
+
+    assert_eq!(policy.leaf(0).state, [0.0, 4.0]); // policy arrives to goal
+    assert_eq!(policy.leaf(1).state, [0.0, 4.0]);
+
+    assert_eq!(policy.leaf(0).belief_state, [0.0, 1.0]); // second belief first
+    assert_eq!(policy.leaf(1).belief_state, [1.0, 0.0]); // first belief second
+
+    let path_0 = policy.path_to_leaf(0);
+    let path_1 = policy.path_to_leaf(1);
+
+    assert_eq!(path_0, vec![[0.0, 1.0], [0.0, 0.0], [0.0, 0.0], [0.0, 1.0], [1.0, 2.0], [10.0, 3.0], [0.0, 4.0]]); // on the right
+    assert_eq!(path_1, vec![[0.0, 1.0], [0.0, 0.0], [0.0, 0.0], [0.0, 1.0], [-1.0, 2.0], [-1.0, 3.0], [0.0, 4.0]]); // on the left
 }
+
+#[test]
+fn test_conditional_dijkstra_and_extract_policy_on_graph_2() {
+    let belief_states = vec![vec![0.4, 0.6], vec![1.0, 0.0], vec![0.0, 1.0]];
+
+    let graph = create_graph_2(&belief_states);
+    
+    let dists = conditional_dijkstra(&graph, &vec![8, 17, 27], |a: &[f64; 2], b: &[f64; 2]| norm2(a, b) );
+    let policy = extract_policy(&graph, &dists);
+
+    // dists
+    let (max_index, max_dist) = dists.iter().enumerate()
+        .fold((0, 0.0), |(max_id, max), (id, val)| if *val > max{ (id, *val) } else{ (max_id, max) });
+    assert_eq!(max_index, 10);
+    assert_eq!(max_dist, 8.0);
+
+    // policy
+    assert_eq!(policy.leafs.len(), 2);
+
+    assert_eq!(policy.leaf(0).state, [0.0, 3.0]); // policy arrives to goal
+    assert_eq!(policy.leaf(1).state, [0.0, 3.0]);
+}
+
 
 #[test]
 fn test_transitions() {
