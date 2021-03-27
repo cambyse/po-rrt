@@ -38,52 +38,12 @@ pub struct RRTNode<const N: usize> {
 	pub belief_state_id: usize,
 	pub node_type: BeliefNodeType,
 	pub parent: Option<ParentLink>,
-	pub children: Vec<usize>,
 }
 
 pub struct RRTTree<const N: usize> {
 	pub nodes: Vec<RRTNode<N>>,
 	pub belief_states: Vec<BeliefState>
 }
-
-// Belief graph trait
-impl<const N: usize> IBeliefNode<N> for RRTNode<N> {
-    fn state(&self) -> &[f64; N] {
-        &self.state
-    }
-
-    fn belief_id(&self) -> usize {
-        self.belief_state_id
-    }
-
-    fn node_type(&self) -> &BeliefNodeType {
-        &self.node_type
-	}
-	
-	fn children(&self) -> &[usize] {
-        &self.children
-    }
-
-	fn parents(&self) -> &[usize] {
-		match self.parent {
-			Some(ref parent) => std::slice::from_ref(&parent.id),
-			None =>&[]
-		}
-    }
-}
-
-impl<const N: usize> IBeliefGraph<N> for RRTTree<N> {
-	fn node(&self, id:usize) -> &dyn IBeliefNode<N> {
-        &self.nodes[id]
-    }
-	fn n_nodes(&self) -> usize {
-        self.nodes.len()
-    }
-    fn belief_state(&self, id:usize) -> &BeliefState {
-        &self.belief_states[self.nodes[id].belief_state_id]
-    }
-}
-//
 
 impl<'a, const N: usize> RRTTree<N> {
 	fn new() -> Self {
@@ -92,20 +52,9 @@ impl<'a, const N: usize> RRTTree<N> {
 
 	fn add_node(&mut self, state: [f64; N], belief_state_id: usize, node_type: BeliefNodeType, parent: Option<ParentLink>) -> usize {
 		let id = self.nodes.len();
-		let node = RRTNode { id, state, belief_state_id, node_type, parent, children: vec![] };
+		let node = RRTNode { id, state, belief_state_id, node_type, parent };
 		self.nodes.push(node);
 		assert!(belief_state_id < self.belief_states.len());
-
-		if let Some(ref parent) = parent {
-			if self.nodes[parent.id].node_type == BeliefNodeType::Observation {
-				// debug
-				assert!(self.nodes[parent.id].children.len() < 2); // observation nodes 
-				//
-			}
-
-			self.nodes[parent.id].children.push(id);
-		}
-
 		id
 	}
 
@@ -348,11 +297,37 @@ impl<'a, F: RRTFuncs<N>, const N: usize> RRT<'a, F, N> {
 			.map(|&id| (rrttree.nodes[id].belief_state_id, rrttree.get_path_to(id)))
 			.collect();
 		*/
-		let expected_costs_to_goal = conditional_dijkstra(&rrttree, &final_node_ids, |a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
-		let policy = extract_policy(&rrttree, &expected_costs_to_goal);
+
+		let belief_graph = BeliefGraph::from(&rrttree);
+		let expected_costs_to_goal = conditional_dijkstra(&belief_graph, &final_node_ids, |a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
+		let policy = extract_policy(&belief_graph, &expected_costs_to_goal);
 
 		(rrttree, policy)
 	}
+}
+
+impl <const N: usize> From<&RRTTree<N>> for BeliefGraph<N> {
+    fn from(rrttree: &RRTTree<N>) -> Self {
+		let reachable_belief_states = vec![];
+
+		let mut nodes: Vec<_> = rrttree.nodes.iter()
+			.map(|n| BeliefNode{
+				state: n.state.clone(),
+				belief_state: rrttree.belief_states[n.belief_state_id].clone(),
+				belief_id: n.belief_state_id,
+				parents: n.parent.map(|p| vec![p.id] ).unwrap_or_else(|| vec![]),
+				children: vec![],
+				node_type: n.node_type,
+			}).collect();
+
+		for (id, n) in rrttree.nodes.iter().enumerate() {
+			if let Some(parent) = n.parent {
+				nodes[parent.id].children.push(id);
+			}
+		}
+
+        Self { nodes, reachable_belief_states }
+    }
 }
 
 #[cfg(test)]

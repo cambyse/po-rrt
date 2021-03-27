@@ -22,7 +22,7 @@ pub trait IBeliefGraph<const N: usize> {
     fn belief_state(&self, id:usize) -> &BeliefState;
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum BeliefNodeType {
     Unknown,
     Action,
