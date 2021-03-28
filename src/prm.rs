@@ -132,7 +132,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	#[allow(clippy::style)]
-	pub fn plan_belief_state(&mut self, start_belief_state: &BeliefState) -> Policy<N> {
+	pub fn plan_belief_space(&mut self, start_belief_state: &BeliefState) -> Policy<N> {
 		assert_belief_state_validity(start_belief_state);
 		
 		println!("build belief graph..");
@@ -266,7 +266,7 @@ fn test_plan_on_map2_pomdp() {
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
-	let policy = prm.plan_belief_state(&vec![0.1, 0.1, 0.1, 0.7]);
+	let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
@@ -291,7 +291,7 @@ fn test_plan_on_map4_pomdp() {
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
-	let policy = prm.plan_belief_state( &vec![1.0/16.0; 16]);
+	let policy = prm.plan_belief_space( &vec![1.0/16.0; 16]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
@@ -316,7 +316,7 @@ fn test_plan_on_map1_fov_pomdp() {
 
 	prm.grow_graph(&[-0.37, 0.37], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
-	let policy = prm.plan_belief_state(&vec![0.5, 0.5]);
+	let policy = prm.plan_belief_space(&vec![0.5, 0.5]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
@@ -341,7 +341,7 @@ fn test_plan_on_map2_fov_pomdp() {
 
 	prm.grow_graph(&[0.35, -0.125], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
-	let policy = prm.plan_belief_state(&vec![0.25, 0.25, 0.25, 0.25]);
+	let policy = prm.plan_belief_space(&vec![0.25, 0.25, 0.25, 0.25]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
@@ -384,7 +384,7 @@ fn test_build_belief_graph() {
 	prm.final_node_ids.push(5);
 	//
 
-	let _policy = prm.plan_belief_state(&vec![0.5, 0.5]);	
+	let _policy = prm.plan_belief_space(&vec![0.5, 0.5]);	
 	assert_eq!(prm.belief_graph.nodes[6].children, vec![7, 8]); // observation transitions
 	assert!(!prm.belief_graph.nodes[7].children.contains(&6)); // observation is irreversible
 	assert!(!prm.belief_graph.nodes[8].children.contains(&6)); // observation is irreversible

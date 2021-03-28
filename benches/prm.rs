@@ -16,7 +16,7 @@ fn prm_map(m: &Map, min_iter: usize) {
 						   m);
 
 	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, min_iter, 100000).unwrap();
-	prm.plan_belief_state(&vec![0.25; 4]);
+	prm.plan_belief_space(&vec![0.25; 4]);
 }
 
 

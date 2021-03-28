@@ -90,12 +90,6 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
 		for &u_id in &graph.nodes[v_id].parents {
             let u = &graph.nodes[u_id];
 
-            //
-            //if u_id == 10 {
-            //    println!("here!");
-            //}
-            //
-
             let mut alternative = 0.0;
             if u.node_type == BeliefNodeType::Action {
                 let v = &graph.nodes[v_id];
