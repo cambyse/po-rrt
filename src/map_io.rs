@@ -268,6 +268,7 @@ impl Map {
 		output_beliefs
 	}
 
+	#[allow(clippy::style)]
 	pub fn observe_impl(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
 		let mut output_beliefs: Vec<BeliefState> = Vec::new();
 		output_beliefs.push(belief_state.clone());
@@ -302,7 +303,7 @@ impl Map {
 		}
 	}
 
-	pub fn draw_path(&mut self, path: &Vec<[f64;2]>, color: Rgb<u8>) {
+	pub fn draw_path(&mut self, path: &[[f64;2]], color: Rgb<u8>) {
 		for i in 1..path.len() {
 			self.draw_line(path[i-1], path[i], color, 1.0);
 		}

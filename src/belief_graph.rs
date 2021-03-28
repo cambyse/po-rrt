@@ -159,8 +159,8 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
 	dist
 }
 
-pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_goals: &Vec<f64>) -> Policy<N> {
-    if graph.nodes.len() == 0 {
+pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_goals: &[f64]) -> Policy<N> {
+    if graph.nodes.is_empty() {
         panic!("no belief state graph!");
     }
 
@@ -192,7 +192,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
     policy
 }
 
-pub fn get_best_expected_children<const N: usize>(graph: &BeliefGraph<N>, belief_node_id: usize, expected_costs_to_goals: &Vec<f64>) -> Vec<usize> {    
+pub fn get_best_expected_children<const N: usize>(graph: &BeliefGraph<N>, belief_node_id: usize, expected_costs_to_goals: &[f64]) -> Vec<usize> {    
     // cluster children by target belief state
     let mut belief_to_children = BTreeMap::new();
     for &child_id in &graph.nodes[belief_node_id].children {

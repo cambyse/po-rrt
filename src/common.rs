@@ -62,11 +62,11 @@ impl<const N: usize> Policy<N> {
 		let mut path = Vec::<[f64; N]>::new();
 		
 		let mut node = self.leaf(id);
-		path.push(node.state.clone());
+		path.push(node.state);
 
 		while node.parent.is_some() {
 			node = &self.nodes[node.parent.unwrap()];
-			path.push(node.state.clone());
+			path.push(node.state);
 		}
 
 		path.reverse();

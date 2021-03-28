@@ -82,6 +82,7 @@ impl<'a, const N: usize> RRTTree<N> {
 
 	/// returns the index of the belief_state.
 	/// If not seen, also inserts in known beliefs.
+	#[allow(clippy::style)]
 	fn maybe_add_belief_state(&mut self, belief_state: &BeliefState) -> usize {
 		self.belief_states
 			.iter()
@@ -171,6 +172,7 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 		Self { samplers, fns }
 	}
 
+	#[allow(clippy::style, clippy::type_complexity)]
 	pub fn plan(&mut self, start: [f64; N], start_belief_state: &BeliefState, goal: fn(&[f64; N]) -> bool,
 				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (RRTTree<N>, Policy<N>, Vec<(usize, Vec<[f64; N]>)>) {
 		let mut final_node_ids = Vec::<usize>::new();
@@ -347,12 +349,13 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 }
 
 impl <const N: usize> From<&RRTTree<N>> for BeliefGraph<N> {
+	#[allow(clippy::style)]
     fn from(rrttree: &RRTTree<N>) -> Self {
 		let reachable_belief_states = vec![];
 
 		let mut nodes: Vec<_> = rrttree.nodes.iter()
 			.map(|n| BeliefNode{
-				state: n.state.clone(),
+				state: n.state,
 				belief_state: rrttree.belief_states[n.belief_state_id].clone(),
 				belief_id: n.belief_state_id,
 				parents: n.parent.map(|p| vec![p.id] ).unwrap_or_else(|| vec![]),
