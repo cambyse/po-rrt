@@ -10,3 +10,4 @@ pub mod prm;
 pub mod prm_graph;
 pub mod prm_reachability;
 pub mod belief_graph;
+pub mod qmdp_policy_extractor;
