@@ -394,7 +394,7 @@ fn test_plan_on_map1() {
 			SAMPLES[self.index]
 		}
 	
-		fn sample_discrete(&mut self, n: usize) -> usize {
+		fn sample_discrete(&mut self, _n: usize) -> usize {
 			const SAMPLES: &[usize] = &[0];
 			let sample = SAMPLES[self.index];
 			self.index += 1;
