@@ -1,4 +1,4 @@
-use itertools::{all, enumerate, izip, merge, zip};
+use itertools::{all, enumerate, izip, zip};
 
 use crate::common::*;
 use crate::nearest_neighbor::*;
@@ -7,9 +7,7 @@ use crate::map_io::*; // tests only
 use crate::prm::*;
 use crate::prm_graph::*;
 use crate::prm_reachability::*;
-use crate::belief_graph::*;
 use bitvec::prelude::*;
-use std::{collections::HashMap, ops::Index};
 
 struct QMdpPolicyExtractor <'a, F: PRMFuncs<N>, const N: usize> {
 	graph: &'a PRMGraph<N>,
