@@ -14,8 +14,8 @@ pub trait GraphNode<const N: usize> {
 pub trait Graph<const N: usize> {
 	fn node(&self, id:usize) -> &dyn GraphNode<N>;
 	fn n_nodes(&self) -> usize;
-	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
-	fn parents(&self, id: usize) -> Box<dyn Iterator<Item=usize>+ '_>;
+	fn children(&self, id: usize) -> Vec<usize>; // deprecated trait -> do not use
+	fn parents(&self, id: usize) ->Vec<usize>; // deprecated trait -> do not use
 }
 
 pub struct PolicyNode<const N: usize> {

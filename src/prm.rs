@@ -208,12 +208,14 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					continue;
 				}
 
-				for &child_id in &node.children {
-					let child_belief_node_id = node_to_belief_nodes[child_id][belief_id];
+				for child_edge in &node.children {
+					let child_belief_node_id = node_to_belief_nodes[child_edge.id][belief_id];
 
 					if let (Some(parent_id), Some(child_id)) = (parent_belief_node_id, child_belief_node_id) {
-						belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Action;
-						belief_space_graph.add_edge(parent_id, child_id);
+						if is_compatible(&belief_space_graph.nodes[parent_id].belief_state, &child_edge.validity) {
+							belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Action;
+							belief_space_graph.add_edge(parent_id, child_id);
+						}
 					}
 				}
 			}
@@ -268,7 +270,7 @@ fn test_plan_on_map2_pomdp() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 3000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
@@ -427,11 +429,11 @@ fn test_build_belief_graph() {
 // - field of view observation model
 // - remove qmdp
 // - tentative propagation
+// - transition onm
 // TODO:
 // - avoid copies
 // - optimize nearest neighbor (avoid sqrt)
 // - actual PRM roadmap
-// - transition onm
 
 // tentative propagation code
 /*

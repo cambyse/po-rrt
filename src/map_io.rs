@@ -388,8 +388,8 @@ impl Map {
 	
 	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>) {
 		for from in &graph.nodes {
-			for to_id in from.children.clone() {
-				let to  = &graph.nodes[to_id];
+			for to_edge in from.children.clone() {
+				let to  = &graph.nodes[to_edge.id];
 				self.draw_line(from.state, to.state, GRAY5, 0.3);
 			}
 		}
@@ -417,15 +417,15 @@ impl Map {
 			let from_id = queue.remove().unwrap();
 			let from = &graph.nodes[from_id];
 
-			for &to_id in &from.children {
-				let to = &graph.nodes[to_id];
+			for to_edge in &from.children {
+				let to = &graph.nodes[to_edge.id];
 
 				if validator(to) {
 					self.draw_line(from.state, to.state, GRAY7, 0.5);
 
-					if !visited.contains(&to_id) {
-						queue.add(to_id).expect("Overflow");
-						visited.insert(to_id);
+					if !visited.contains(&to_edge.id) {
+						queue.add(to_edge.id).expect("Overflow");
+						visited.insert(to_edge.id);
 					}
 				}
 			}
@@ -490,14 +490,14 @@ impl PRMFuncs<2> for Map {
 	}
 
 	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> Option<WorldMask> {
-		// needed ?
+		// needed -> benchmark
 		let symbolic_validity = from.validity.iter().zip(&to.validity)
 		.any(|(a, b)| *a && *b);
 
 		if !symbolic_validity {
 			return None
 		}
-		// ?
+		//
 		
 		let geometric_validitiy = self.get_traversed_space(&from.state, &to.state);
 

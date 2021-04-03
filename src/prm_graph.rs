@@ -23,8 +23,31 @@ use minilp::{ComparisonOp, OptimizationDirection, Problem, Variable};
 pub struct SerializablePRMNode {
 	pub state: Vec<f64>,
 	pub validity: Vec<bool>,
-	pub parents: Vec<usize>,
-	pub children: Vec<usize>,
+	pub parents: Vec<SerializablePRMEdge>,
+	pub children: Vec<SerializablePRMEdge>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SerializablePRMEdge {
+	pub id: usize,
+	pub validity: Vec<bool>,
+}
+
+impl SerializablePRMEdge {
+	#[allow(clippy::nonminimal_bool)]
+	pub fn from_prm_edge(edge : &PRMEdge) -> Self {
+		Self{
+			id: edge.id,			
+			validity: edge.validity.iter().map(|b| !!b).collect(),
+		}
+	}
+
+	pub fn to_prm_edge(&self) -> PRMEdge {
+		PRMEdge {
+			id: self.id,
+			validity: self.validity.iter().collect(),
+		}
+	}
 }
 
 impl SerializablePRMNode {
@@ -33,8 +56,8 @@ impl SerializablePRMNode {
 		Self{
 			state: node.state.to_vec(),			
 			validity: node.validity.iter().map(|b| !!b).collect(),
-			parents: node.parents.clone(),
-			children: node.children.clone()
+			parents: node.parents.iter().map(|edge| SerializablePRMEdge::from_prm_edge(edge)).collect(),
+			children: node.children.iter().map(|edge| SerializablePRMEdge::from_prm_edge(edge)).collect()
 		}
 	}
 
@@ -42,11 +65,12 @@ impl SerializablePRMNode {
 		PRMNode {
 			state: self.state.clone().try_into().unwrap(),
 			validity: self.validity.iter().collect(),
-			parents: self.parents.clone(),
-			children: self.children.clone(),
+			parents: self.parents.iter().map(|edge| SerializablePRMEdge::to_prm_edge(edge)).collect(),
+			children: self.children.iter().map(|edge| SerializablePRMEdge::to_prm_edge(edge)).collect(),
 		}
 	}
 }
+
 
 #[derive(Serialize, Deserialize)]
 pub struct SerializablePRMGraph {
@@ -121,12 +145,13 @@ pub trait PRMFuncs<const N: usize> {
 pub struct PRMNode<const N: usize> {
 	pub state: [f64; N],
 	pub validity: WorldMask,
-	pub parents: Vec<usize>,
-	pub children: Vec<usize>,
+	pub parents: Vec<PRMEdge>,
+	pub children: Vec<PRMEdge>,
 }
 
+#[derive(Clone)]
 pub struct PRMEdge {
-	pub child_id: usize,
+	pub id: usize,
 	pub validity: WorldMask
 }
 
@@ -150,8 +175,8 @@ impl<const N: usize> PRMGraph<N> {
 	}
 
 	pub fn add_edge(&mut self, from_id: usize, to_id: usize, validity: WorldMask) {
-		self.nodes[from_id].children.push(to_id);
-		self.nodes[to_id].parents.push(from_id);
+		self.nodes[from_id].children.push(PRMEdge{id: to_id, validity: validity.clone()});
+		self.nodes[to_id].parents.push(PRMEdge{id:from_id, validity});
 	}
 
 	pub fn add_bi_edge(&mut self, id1: usize, id2: usize, validity: WorldMask) {
@@ -160,8 +185,8 @@ impl<const N: usize> PRMGraph<N> {
 	}
 
 	pub fn remove_edge(&mut self, from_id: usize, to_id: usize) {
-		self.nodes[from_id].children.retain(|&id|{id != to_id});
-		self.nodes[to_id].parents.retain(|&id|{id != from_id});
+		self.nodes[from_id].children.retain(|edge|{edge.id != to_id});
+		self.nodes[to_id].parents.retain(|edge|{edge.id != from_id});
 	}
 
 	pub fn print_summary(&self) {
@@ -182,11 +207,11 @@ impl<const N: usize> Graph<N> for PRMGraph<N> {
 	fn n_nodes(&self) -> usize {
 		self.nodes.len()
 	}
-	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.nodes[id].children.iter().copied())
+	fn children(&self, id: usize) -> Vec<usize> {
+		self.nodes[id].children.iter().map(|edge| edge.id).collect()
 	}
-	fn parents(&self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.nodes[id].parents.iter().copied())
+	fn parents(&self, id:usize) -> Vec<usize> {
+		self.nodes[id].parents.iter().map(|edge| edge.id).collect()
 	}
 }
 
@@ -202,15 +227,19 @@ impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
 	fn n_nodes(&self) -> usize {
 		self.graph.n_nodes()
 	}
-	fn children(&self, id: usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.graph.nodes[id].children.iter()
-			.filter(move |&id| self.graph.nodes[*id].validity[self.world])
-			.copied())
+	fn children(&self, id: usize) -> Vec<usize> {
+		//panic!("deprecated!");
+		self.graph.nodes[id].children.iter()
+			.map(|edge| edge.id)
+			.filter(|&id| self.graph.nodes[id].validity[self.world])
+			.collect()
 	}
-	fn parents(& self, id:usize) -> Box<dyn Iterator<Item=usize> + '_> {
-		Box::new(self.graph.nodes[id].parents.iter()
-			.filter(move |&id| self.graph.nodes[*id].validity[self.world])
-			.copied())
+	fn parents(& self, id:usize) -> Vec<usize> {
+		//panic!("deprecated!");
+		self.graph.nodes[id].parents.iter()
+			.map(|edge| edge.id)
+			.filter(|&id| self.graph.nodes[id].validity[self.world])
+			.collect()
 	}
 }
 
@@ -259,8 +288,8 @@ pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &[Ve
 	};
 
 	for (from_id, node) in graph.nodes.iter().enumerate() {
-		for &to_id in &node.children {
-			let world_validities = get_world_validities(to_id);
+		for to_edge in &node.children {
+			let world_validities = get_world_validities(to_edge.id);
 
 			// keep to if there is belief in which it would be the right decision: bs * cost(to) < bs * cost (other)
 			// => this means solving an LP
@@ -282,13 +311,13 @@ pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &[Ve
 			problem.add_constraint(&eq_constraint, ComparisonOp::Eq, 1.0);
 
 			// improvment constraint
-			for &other_id in &node.children {
-				if other_id != to_id {
+			for other_edge in &node.children {
+				if other_edge.id != to_edge.id {
 					let mut improvment_constraint : Vec<(Variable, f64)> = Vec::new();
 
 					for world in 0..n_worlds {
-						if world_validities[world] && cost_to_goals[world][other_id].is_finite() {
-							improvment_constraint.push((belief[world], cost_to_goals[world][to_id] - cost_to_goals[world][other_id]));
+						if world_validities[world] && cost_to_goals[world][other_edge.id].is_finite() {
+							improvment_constraint.push((belief[world], cost_to_goals[world][to_edge.id] - cost_to_goals[world][other_edge.id]));
 						}
 					}
 
@@ -298,7 +327,7 @@ pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &[Ve
 
 			match problem.solve() {
 				Ok(_) => {},
-				Err(_) => policy.remove_edge(from_id, to_id)
+				Err(_) => policy.remove_edge(from_id, to_edge.id)
 			}
 		}
 	}
@@ -312,6 +341,12 @@ pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &[Ve
 mod tests {
 
 use super::*;
+
+fn to_ids(children: &Vec<PRMEdge>) -> Vec<usize> {
+	children.iter()
+		.map(|edge| edge.id)
+		.collect()
+}
 
 fn create_minimal_graph() -> PRMGraph<2> {
 	/*
@@ -464,9 +499,9 @@ fn test_policy_extraction_on_diamond_graph() {
 	let policy = get_policy_graph(&graph, &vec![dists]).unwrap();
 
 	// pruning happend, only one edge should remain
-	assert_eq!(policy.nodes[0].children, vec![3]);
-	assert_eq!(policy.nodes[1].children, vec![3]);
-	assert_eq!(policy.nodes[2].children, vec![3]);
+	assert_eq!(to_ids(&policy.nodes[0].children), vec![3]);
+	assert_eq!(to_ids(&policy.nodes[1].children), vec![3]);
+	assert_eq!(to_ids(&policy.nodes[2].children), vec![3]);
 }
 
 #[test]
@@ -481,9 +516,9 @@ fn test_policy_extraction_on_diamond_graph_2_worlds() {
 	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
 
 	// pruning of reversed edges happended, but 1 and 2 still reachable because we need them to be complete in each world
-	assert_eq!(policy.nodes[3].children, vec![1, 2]);
-	assert_eq!(policy.nodes[1].children, vec![3]);
-	assert_eq!(policy.nodes[2].children, vec![3]);
+	assert_eq!(to_ids(&policy.nodes[3].children), vec![1, 2]);
+	assert_eq!(to_ids(&policy.nodes[1].children), vec![3]);
+	assert_eq!(to_ids(&policy.nodes[2].children), vec![3]);
 }
 
 #[test]
@@ -498,9 +533,9 @@ fn test_policy_extraction_on_grid_with_2_different_goals() {
 	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
 
 	// prune non advantageous part of the grid
-	assert_eq!(policy.nodes[3].children, vec![0, 4]);
-	assert_eq!(policy.nodes[4].children, vec![1, 5]);
-	assert_eq!(policy.nodes[8].children, vec![5]);
+	assert_eq!(to_ids(&policy.nodes[3].children), vec![0, 4]);
+	assert_eq!(to_ids(&policy.nodes[4].children), vec![1, 5]);
+	assert_eq!(to_ids(&policy.nodes[8].children), vec![5]);
 }
 
 #[test]

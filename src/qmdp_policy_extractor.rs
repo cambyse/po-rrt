@@ -91,15 +91,15 @@ impl <'a, F: PRMFuncs<N>, const N: usize> QMdpPolicyExtractor<'a, F, N> {
 		let mut best_child_id = 0;
 		let mut smallest_expected_cost = std::f64::INFINITY;
 
-		for child_id in &node.children {
+		for child_edge in &node.children {
 			let mut child_expected_cost = 0.0;
 
 			for world in 0..*self.n_worlds {
-				child_expected_cost += self.cost_to_goals[world][*child_id] * belief_state[world];
+				child_expected_cost += self.cost_to_goals[world][child_edge.id] * belief_state[world];
 			}
 
 			if child_expected_cost < smallest_expected_cost {
-				best_child_id = *child_id;
+				best_child_id = child_edge.id;
 				smallest_expected_cost = child_expected_cost;
 			}
 		}
@@ -111,10 +111,10 @@ impl <'a, F: PRMFuncs<N>, const N: usize> QMdpPolicyExtractor<'a, F, N> {
 		let mut best_child_id = 0;
 		let mut smaller_cost = std::f64::INFINITY;
 
-		for child_id in &node.children {
-			if self.cost_to_goals[world][*child_id] < smaller_cost {
-				smaller_cost = self.cost_to_goals[world][*child_id];
-				best_child_id = *child_id;
+		for child_edge in &node.children {
+			if self.cost_to_goals[world][child_edge.id] < smaller_cost {
+				smaller_cost = self.cost_to_goals[world][child_edge.id];
+				best_child_id = child_edge.id;
 			}
 		}
 
