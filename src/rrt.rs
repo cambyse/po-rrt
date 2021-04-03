@@ -457,12 +457,12 @@ fn test_plan_on_map1() {
 	}
 }
 #[test]
-fn test_plan_on_map() {
-	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_zone_ids.pgm", 0.2);
+fn test_plan_on_map2() {
+	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map4_zone_ids.pgm", 0.2);
 
 	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.5).abs() < 0.05 && (state[1] - 0.7).abs() < 0.05
+		(state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
 	let mut samplers = RRTDefaultSamplers {
@@ -473,7 +473,8 @@ fn test_plan_on_map() {
 	let mut rrt = RRT::new(
 		&mut samplers,
 		&m);
-	let (rrttree, policy, _paths) = rrt.plan([0.5, -0.8], &vec![0.1, 0.1, 0.1, 0.7], goal, 0.05, 5.0, 20000);
+
+	let (rrttree, policy, _paths) = rrt.plan([0.55, -0.8], &vec![1.0/16.0; 16], goal, 0.05, 5.0, 50_000);
 	//assert!(!paths.is_empty(), "No path found!");
 
 	for belief_id in 0..rrttree.belief_states.len() {
@@ -483,7 +484,7 @@ fn test_plan_on_map() {
 		m.draw_tree(&rrttree, Some(belief_id));
 		m.draw_policy(&policy);
 		m.draw_zones_observability();
-		m.save(&format!("results/test_rrt_on_map2_{}", belief_id));
+		m.save(&format!("results/test_rrt_on_map4_{}", belief_id));
 	}
 	//for (belief_id, path) in &paths {
 	//	m.draw_path(path, crate::map_io::colors::color_map(*belief_id));
