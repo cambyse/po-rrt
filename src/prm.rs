@@ -87,28 +87,30 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 				if neighbour_ids.is_empty() { neighbour_ids.push(kd_from.id); }
 
+
+				//let b = Vec<(usize, Option<WorldMask>)>::new();
 				// Idea: sample which ones we rewire to?
-				let fwd_ids: Vec<usize> = neighbour_ids.iter()
+				let fwd_edges: Vec<(usize, Option<WorldMask>)> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
-					.filter(|(_, node)| self.fns.transition_validator(node, new_node))
-					.map(|(id, _)| id)
+					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
+					.filter(|(_, validity)| validity.is_some())
 					.collect();
 
-				let bwd_ids: Vec<usize> = neighbour_ids.iter()
+				let bwd_edges: Vec<(usize, Option<WorldMask>)> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
-					.filter(|(_, node)| self.fns.transition_validator(new_node, node))
-					.map(|(id, _)| id)
+					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
+					.filter(|(_, validity)| validity.is_some())
 					.collect();
 							
 				// connect neighbors to new node
-				for &id in &fwd_ids {
-					self.graph.add_edge(id, new_node_id);
+				for (id, validity) in fwd_edges {
+					self.graph.add_edge(id, new_node_id, validity.expect("None validity should be filtered at this stage"));
 					self.conservative_reachability.add_edge(id, new_node_id);
 				}
 
 				// connect new node to neighbor
-				for &id in &bwd_ids {
-					self.graph.add_edge(new_node_id, id);
+				for (id, validity) in bwd_edges {
+					self.graph.add_edge(new_node_id, id, validity.expect("None validity should be filtered at this stage"));
 					self.conservative_reachability.add_edge(new_node_id, id);
 				}
 
@@ -266,7 +268,7 @@ fn test_plan_on_map2_pomdp() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 3000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
@@ -375,13 +377,13 @@ fn test_build_belief_graph() {
 	prm.graph.add_node([-0.97, 0.65], bitvec![1, 1]); // 4
 	prm.graph.add_node([0.55, 0.9], bitvec![1, 1]);   // 5
 
-	prm.graph.add_edge(0, 1); 	prm.graph.add_edge(1, 0);
-	prm.graph.add_edge(1, 2);   prm.graph.add_edge(2, 1);
-	prm.graph.add_edge(2, 3);   prm.graph.add_edge(3, 2);
-	prm.graph.add_edge(3, 5);   prm.graph.add_edge(5, 3);
+	prm.graph.add_bi_edge(0, 1, bitvec![1, 1]);
+	prm.graph.add_bi_edge(1, 2, bitvec![1, 1]);
+	prm.graph.add_bi_edge(2, 3, bitvec![0, 1]);
+	prm.graph.add_bi_edge(3, 5, bitvec![0, 1]);
 
-	prm.graph.add_edge(1, 4);   prm.graph.add_edge(4, 1);
-	prm.graph.add_edge(4, 5);   prm.graph.add_edge(5, 4);
+	prm.graph.add_bi_edge(1, 4, bitvec![1, 1]);
+	prm.graph.add_bi_edge(4, 5, bitvec![1, 1]);
 
 	prm.final_node_ids.push(5);
 	//

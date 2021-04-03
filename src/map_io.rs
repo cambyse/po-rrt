@@ -489,19 +489,23 @@ impl PRMFuncs<2> for Map {
 		}
 	}
 
-	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> bool {
+	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> Option<WorldMask> {
+		// needed ?
 		let symbolic_validity = from.validity.iter().zip(&to.validity)
 		.any(|(a, b)| *a && *b);
 
-		/*let geometric_validitiy = match self.get_traversed_space(&from.state, &to.state) {
-			Belief::Obstacle => false,
-			Belief::Free => true,
-			Belief::Zone(zone_id) => { self.zone_index_to_world_mask(zone_id) == to.validity }
-		};*/
+		if !symbolic_validity {
+			return None
+		}
+		// ?
+		
+		let geometric_validitiy = self.get_traversed_space(&from.state, &to.state);
 
-		let geometric_validitiy = self.get_traversed_space(&from.state, &to.state) != Belief::Obstacle;
-
-		symbolic_validity && geometric_validitiy
+		match geometric_validitiy {
+			Belief::Zone(zone_index) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
+			Belief::Free => {Some(bitvec![1; self.n_worlds])},
+			Belief::Obstacle => None
+		}
 	}
 
 	fn reachable_belief_states(&self, belief_state: &BeliefState) -> Vec<BeliefState> {

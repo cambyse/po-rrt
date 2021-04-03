@@ -87,9 +87,19 @@ pub trait PRMFuncs<const N: usize> {
 		None
 	}
 
-	fn transition_validator(&self, from: &PRMNode<N>, to: &PRMNode<N>) -> bool {
-		from.validity.iter().zip(&to.validity)
-		.any(|(a, b)| *a && *b)
+	fn transition_validator(&self, from: &PRMNode<N>, to: &PRMNode<N>) -> Option<WorldMask> {
+		//let validity = from.validity.iter().zip(&to.validity)
+		//.any(|(a, b)| *a && *b);
+
+		let validity: WorldMask = from.validity.iter().zip(&to.validity)
+		.map(|(a, b)| *a && *b)
+		.collect();
+
+		if validity.any() {
+			return Some(validity);
+		}
+		
+		None
 	}
 
 	fn cost_evaluator(&self, a: &[f64; N], b: &[f64; N]) -> f64 {
@@ -139,9 +149,14 @@ impl<const N: usize> PRMGraph<N> {
 		id
 	}
 
-	pub fn add_edge(&mut self, from_id: usize, to_id: usize) {
+	pub fn add_edge(&mut self, from_id: usize, to_id: usize, validity: WorldMask) {
 		self.nodes[from_id].children.push(to_id);
 		self.nodes[to_id].parents.push(from_id);
+	}
+
+	pub fn add_bi_edge(&mut self, id1: usize, id2: usize, validity: WorldMask) {
+		self.add_edge(id1, id2, validity.clone());
+		self.add_edge(id2, id1, validity);
 	}
 
 	pub fn remove_edge(&mut self, from_id: usize, to_id: usize) {
@@ -305,7 +320,7 @@ fn create_minimal_graph() -> PRMGraph<2> {
 	let mut graph = PRMGraph{nodes: Vec::new()};
 	graph.add_node([0.0, 0.0], bitvec![1]);   
 	graph.add_node([1.0, 0.0], bitvec![1]);   
-	graph.add_edge(0, 1);
+	graph.add_edge(0, 1, bitvec![1]);
 
 	graph
 }
@@ -333,23 +348,22 @@ fn create_grid_graph() -> PRMGraph<2> {
 	graph.add_node([2.0, 2.0], bitvec![1]);   // 8
  
 	// edges
-	graph.add_edge(0, 1); 	graph.add_edge(1, 0);
-	graph.add_edge(1, 2);   graph.add_edge(2, 1);
+	graph.add_bi_edge(0, 1, bitvec![1]);
+	graph.add_bi_edge(1, 2, bitvec![1]);
 
-	graph.add_edge(0, 3); 	graph.add_edge(3, 0);
-	graph.add_edge(1, 4); 	graph.add_edge(4, 1);
-	graph.add_edge(2, 5); 	graph.add_edge(5, 2);
+	graph.add_bi_edge(0, 3, bitvec![1]);
+	graph.add_bi_edge(1, 4, bitvec![1]);
+	graph.add_bi_edge(2, 5, bitvec![1]);
 
-	graph.add_edge(3, 4); 	graph.add_edge(4, 3);
-	graph.add_edge(4, 5);   graph.add_edge(5, 4);
+	graph.add_bi_edge(3, 4, bitvec![1]);
+	graph.add_bi_edge(4, 5, bitvec![1]);
 
-	graph.add_edge(3, 6); 	graph.add_edge(6, 3);
-	graph.add_edge(4, 7); 	graph.add_edge(7, 4);
-	graph.add_edge(5, 8); 	graph.add_edge(8, 5);
+	graph.add_bi_edge(3, 6, bitvec![1]);
+	graph.add_bi_edge(4, 7, bitvec![1]);
+	graph.add_bi_edge(5, 8, bitvec![1]);
 
-	graph.add_edge(6, 7); 	graph.add_edge(7, 6);
-	graph.add_edge(7, 8);   graph.add_edge(8, 7);
-
+	graph.add_bi_edge(6, 7, bitvec![1]);
+	graph.add_bi_edge(7, 8, bitvec![1]);
 	graph
 }
 
@@ -369,10 +383,10 @@ fn create_oriented_grid_graph() -> PRMGraph<2> {
 	graph.add_node([1.0, 1.0], bitvec![1]);   // 3
 
 	// edges
-	graph.add_edge(0, 1);
-	graph.add_edge(0, 2);
-	graph.add_edge(1, 3);
-	graph.add_edge(3, 2);
+	graph.add_edge(0, 1, bitvec![1]);
+	graph.add_edge(0, 2, bitvec![1]);
+	graph.add_edge(1, 3, bitvec![1]);
+	graph.add_edge(3, 2, bitvec![1]);
 
 	graph
 }
@@ -395,11 +409,11 @@ fn create_diamond_graph() -> PRMGraph<2> {
 	graph.add_node([2.0, 0.0], bitvec![1]);   // 3
 
 	// edges
-	graph.add_edge(0, 1); 	graph.add_edge(1, 0);
-	graph.add_edge(0, 3); 	graph.add_edge(3, 0);
-	graph.add_edge(0, 2); 	graph.add_edge(2, 0);
-	graph.add_edge(1, 3); 	graph.add_edge(3, 1);
-	graph.add_edge(2, 3); 	graph.add_edge(3, 2);
+	graph.add_bi_edge(0, 1, bitvec![1]); 
+	graph.add_bi_edge(0, 3, bitvec![1]); 
+	graph.add_bi_edge(0, 2, bitvec![1]); 
+	graph.add_bi_edge(1, 3, bitvec![1]); 
+	graph.add_bi_edge(2, 3, bitvec![1]);
 
 	graph
 }
@@ -423,10 +437,10 @@ fn create_diamond_graph_2_worlds() -> PRMGraph<2> {
 	graph.add_node([2.0, 0.0], bitvec![1, 1]);   // 3
 
 	// edges
-	graph.add_edge(0, 1); 	graph.add_edge(1, 0);
-	graph.add_edge(0, 2); 	graph.add_edge(2, 0);
-	graph.add_edge(1, 3); 	graph.add_edge(3, 1);
-	graph.add_edge(2, 3); 	graph.add_edge(3, 2);
+	graph.add_bi_edge(0, 1, bitvec![1, 0]);
+	graph.add_bi_edge(0, 2, bitvec![0, 1]);
+	graph.add_bi_edge(1, 3, bitvec![1, 0]);
+	graph.add_bi_edge(2, 3, bitvec![0, 1]);
 
 	graph
 }
@@ -555,12 +569,12 @@ fn test_world_transitions() {
 		PRMNode{state: [0.0, 0.0], validity: validity, parents: Vec::new(), children: Vec::new()}
 	}
 
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1]), &dummy_node(bitvec![1])), true);
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1]), &dummy_node(bitvec![0])), false);
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 0]), &dummy_node(bitvec![1, 0])), true);
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 0]), &dummy_node(bitvec![0, 1])), false);
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 1]), &dummy_node(bitvec![1, 1])), true);
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![0, 0]), &dummy_node(bitvec![1, 1])), false);
+	assert_eq!(f.transition_validator(&dummy_node(bitvec![1]), &dummy_node(bitvec![1])), Some(bitvec![1]));
+	assert_eq!(f.transition_validator(&dummy_node(bitvec![1]), &dummy_node(bitvec![0])), None);
+	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 0]), &dummy_node(bitvec![1, 0])), Some(bitvec![1, 0]));
+	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 0]), &dummy_node(bitvec![0, 1])), None);
+	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 1]), &dummy_node(bitvec![1, 1])), Some(bitvec![1, 1]));
+	assert_eq!(f.transition_validator(&dummy_node(bitvec![0, 0]), &dummy_node(bitvec![1, 1])), None);
 }
 
 }
