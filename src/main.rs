@@ -130,7 +130,7 @@ fn display(){
 
 fn main() {
     let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map4_zone_ids.pgm", 0.15);
+	m.add_zones("data/map4_zone_ids.pgm", 0.5);
 
 	fn goal(state: &[f64; 2]) -> WorldMask {
 		bitvec![if (state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]

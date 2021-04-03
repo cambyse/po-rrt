@@ -34,16 +34,6 @@ impl Reachability {
 	}
 
 	pub fn add_edge(&mut self, from: usize, to: usize) {
-		/*let mut tmp = self.reachability[from].clone();
-		tmp &= self.validity[to].clone();
-		self.reachability[to] |= tmp;
-		*/
-
-		/*self.reachability[to] = 
-		izip!(self.reachability[from].iter(), self.reachability[to].iter(), self.validity[to].iter())
-		.map(|(r_from, r_to, v_to)| *r_to || (*r_from && *v_to) )
-		.collect();*/
-
 		// this version appears to be the fastest, see cargo bench
 		for i in 0..self.reachability[to].len() {
 			let r_to = self.reachability[to][i];

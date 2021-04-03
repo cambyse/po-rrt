@@ -100,16 +100,18 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					.map(|(id, _)| id)
 					.collect();
 							
+				// connect neighbors to new node
 				for &id in &fwd_ids {
 					self.graph.add_edge(id, new_node_id);
 					self.conservative_reachability.add_edge(id, new_node_id);
 				}
-				
+
+				// connect new node to neighbor
 				for &id in &bwd_ids {
 					self.graph.add_edge(new_node_id, id);
 					self.conservative_reachability.add_edge(new_node_id, id);
 				}
-					
+
 				let finality = goal(&new_state);
 				let is_final = finality.iter().any(|w|{*w});
 				if is_final {
@@ -264,7 +266,7 @@ fn test_plan_on_map2_pomdp() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
@@ -421,9 +423,51 @@ fn test_build_belief_graph() {
 // - extract common path
 // - plan from random point
 // - field of view observation model
+// - remove qmdp
+// - tentative propagation
 // TODO:
 // - avoid copies
 // - optimize nearest neighbor (avoid sqrt)
 // - actual PRM roadmap
 // - transition onm
-// - remove qmdp
+
+// tentative propagation code
+/*
+extern crate queues;
+use queues::*;
+use std::collections::HashSet;
+
+let mut visited = HashSet::new();
+let mut queue: Queue<usize> = queue![];
+//
+
+// connect new node to neighbor
+for &id in &bwd_ids {
+	self.graph.add_edge(new_node_id, id);
+	self.conservative_reachability.add_edge(new_node_id, id);
+
+	
+	// propagate
+	visited.insert(id);
+	queue.add(id).expect("Overflow!");
+}
+
+//
+
+while queue.size() > 0 {
+	let from_id = queue.remove().unwrap();
+
+	for to_id in self.graph.nodes[from_id].children.clone() {
+		if !contains(&self.conservative_reachability.reachability(to_id), &state_validity) {
+			self.conservative_reachability.add_edge(from_id, to_id);
+
+			if !visited.contains(&to_id) {
+				//println!("add node:{}", to_id);
+				queue.add(to_id).expect("Overflow");
+				visited.insert(to_id);
+			}
+		}
+	}
+}*/
+//println!("---");
+//

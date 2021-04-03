@@ -151,3 +151,31 @@ pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
 pub fn assert_belief_state_validity(belief_state: &BeliefState) {
 	assert!((belief_state.iter().fold(0.0, |s, p| p + s) - 1.0).abs() < 0.000001);
 }
+
+pub fn contains(wm1: &WorldMask, wm2: &WorldMask) -> bool {
+	// wether wm1 contains wm2
+	for (w1, w2) in wm1.iter().zip(wm2) {
+		if *w2 == true && *w1 == false {
+			return false;
+		}
+	}
+	true
+}
+
+#[cfg(test)]
+mod tests {
+
+use super::*;
+
+#[test]
+fn test_wm_contains() {
+	assert!(contains(&bitvec![1,1], &bitvec![1,1]));
+	assert!(contains(&bitvec![1,1], &bitvec![1,0]));
+	assert!(contains(&bitvec![1,1], &bitvec![0,1]));
+	assert!(contains(&bitvec![1,1], &bitvec![0,0]));
+
+	assert!(contains(&bitvec![1,0], &bitvec![1,0]));
+	assert!(!contains(&bitvec![1,0], &bitvec![0,1]));
+	assert!(!contains(&bitvec![0,0], &bitvec![0,1]));
+}
+}
