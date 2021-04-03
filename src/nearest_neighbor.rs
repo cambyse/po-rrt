@@ -17,6 +17,11 @@ impl<const N: usize> KdTree<N> {
 		Self { root }
 	}
 
+	pub fn new_with_id(id: usize, state: [f64; N]) -> Self {
+		let root = KdNode { id, state, left: None, right: None };
+		Self { root }
+	}
+
 	pub fn reset(&mut self, state: [f64; N]) {
 		self.root = KdNode { id: 0, state, left: None, right: None };
 	}

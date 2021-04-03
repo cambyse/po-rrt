@@ -178,11 +178,13 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 		let mut transition_set = HashSet::new();
 		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new();
-		let mut kdtree = KdTree::new(start);
+
+		let mut kdtrees = std::collections::HashMap::new();
 
 		{
 			let belief_id = rrttree.maybe_add_belief_state(start_belief_state);
 			rrttree.add_node(start, belief_id, BeliefNodeType::Action, None); // root node
+			kdtrees.insert(belief_id, KdTree::new(start));
 		}
 
 		let mut last_status_update_time = std::time::Instant::now();
@@ -196,8 +198,11 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 			let mut new_state = self.samplers.sample_state();
 			let sampled_belief_id = self.samplers.sample_discrete(rrttree.belief_states.len());
 
+			let kdtree = kdtrees.get_mut(&sampled_belief_id).expect("kdtree missing");
+
 			// XXX nearest_neighbor_filtered can return the root even if the filter closure disagrees.
-			let canonical_neighbor = kdtree.nearest_neighbor_filtered(new_state, |id| rrttree.nodes[id].belief_state_id == sampled_belief_id &&  rrttree.nodes[id].node_type != BeliefNodeType::Observation); // n log n
+			let canonical_neighbor = kdtree
+				.nearest_neighbor_filtered(new_state, |id| rrttree.nodes[id].node_type != BeliefNodeType::Observation); // n log n
 			steer(&canonical_neighbor.state, &mut new_state, max_step);
 
 			//
@@ -217,7 +222,7 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 				};
 
 				let mut neighbor_ids: Vec<usize> = kdtree
-					.nearest_neighbors_filtered(new_state, radius, |id| rrttree.nodes[id].belief_state_id == sampled_belief_id && rrttree.nodes[id].node_type != BeliefNodeType::Observation)
+					.nearest_neighbors_filtered(new_state, radius, |id| rrttree.nodes[id].node_type != BeliefNodeType::Observation)
 					.iter()
 					.map(|&kd_node| kd_node.id)
 					.collect();
@@ -322,7 +327,11 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 							let parent_link = ParentLink { id: new_node_id, dist: 0.0 };
 							let new_node_id = rrttree.add_node(new_state, children_belief_state_id, BeliefNodeType::Action, Some(parent_link));
 
-							kdtree.add(new_state, new_node_id);
+							if let Some(kdtree) = kdtrees.get_mut(&children_belief_state_id) {
+								kdtree.add(new_state, new_node_id);
+							} else {
+								kdtrees.insert(children_belief_state_id, KdTree::new_with_id(new_node_id, new_state));
+							}
 						}
 					}
 				}
