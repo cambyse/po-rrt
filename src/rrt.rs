@@ -185,7 +185,14 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 			rrttree.add_node(start, belief_id, BeliefNodeType::Action, None); // root node
 		}
 
-		for _ in 0..n_iter_max {
+		let mut last_status_update_time = std::time::Instant::now();
+
+		for i in 0..n_iter_max {
+			if last_status_update_time.elapsed() > std::time::Duration::from_secs(5) {
+				println!("iteration: {}/{} ({}%)", i, n_iter_max, (100*i)/n_iter_max);
+				last_status_update_time = std::time::Instant::now();
+			}
+
 			let mut new_state = self.samplers.sample_state();
 			let sampled_belief_id = self.samplers.sample_discrete(rrttree.belief_states.len());
 
