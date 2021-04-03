@@ -456,6 +456,7 @@ fn test_plan_on_map() {
 	for belief_id in 0..rrttree.belief_states.len() {
 		let mut m = m.clone();
 		m.resize(5);
+		m.draw_hit_zone(goal);
 		m.draw_tree(&rrttree, Some(belief_id));
 		m.draw_policy(&policy);
 		m.draw_zones_observability();

@@ -309,6 +309,25 @@ impl Map {
 		}
 	}
 
+	pub fn draw_hit_zone(&mut self, hit_zone: impl Fn(&[f64; 2]) -> bool) {
+		const N: usize = 100;
+		for i in 0..N {
+			for j in 0..N {
+				let f = (i as f64) / (N as f64);
+				let i = self.low[0] * (1.0-2.0*f);
+
+				let f = (j as f64) / (N as f64);
+				let j = self.low[1] * (1.0-2.0*f);
+
+				let p = [i,j];
+
+				if hit_zone(&p) {
+					self.draw_circle(&p, 0.025, RED);
+				}
+			}
+		}
+	}
+
 	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>, belief_id: Option<usize>) {
 		for c in &rrttree.nodes {
 			if let Some(ref parent_link) = c.parent {
