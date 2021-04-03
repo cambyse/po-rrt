@@ -175,6 +175,7 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 	#[allow(clippy::style, clippy::type_complexity)]
 	pub fn plan(&mut self, start: [f64; N], start_belief_state: &BeliefState, goal: fn(&[f64; N]) -> bool,
 				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (RRTTree<N>, Policy<N>, Vec<(usize, Vec<[f64; N]>)>) {
+		let mut transition_set = HashSet::new();
 		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new();
 		let mut kdtree = KdTree::new(start);
@@ -305,11 +306,17 @@ impl<'a, FS: SampleFuncs<N>,  F: RRTFuncs<N>, const N: usize> RRT<'a, FS, F, N> 
 				}
 				else { //if rrttree.nodes[new_node_id].node_type == BeliefNodeType::Observation {
 					// Step 7: Create sibling in new belief in case of belief transition
-					for child_belief_state in children_belief_states {
-						let children_belief_state_id = rrttree.maybe_add_belief_state(&child_belief_state);
-						let parent_link = ParentLink { id: new_node_id, dist: 0.0 };
-						let new_node_id = rrttree.add_node(new_state, children_belief_state_id, BeliefNodeType::Action, Some(parent_link));
-						kdtree.add(new_state, new_node_id);
+					let children_belief_states_ids = children_belief_states.iter()
+						.map(|belief_state| rrttree.maybe_add_belief_state(belief_state))
+						.collect::<Vec<_>>();
+
+					if transition_set.insert((sampled_belief_id, children_belief_states_ids.clone())) {
+						for children_belief_state_id in children_belief_states_ids {
+							let parent_link = ParentLink { id: new_node_id, dist: 0.0 };
+							let new_node_id = rrttree.add_node(new_state, children_belief_state_id, BeliefNodeType::Action, Some(parent_link));
+
+							kdtree.add(new_state, new_node_id);
+						}
 					}
 				}
 
