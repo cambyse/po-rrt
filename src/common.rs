@@ -155,7 +155,7 @@ pub fn assert_belief_state_validity(belief_state: &BeliefState) {
 pub fn contains(wm1: &WorldMask, wm2: &WorldMask) -> bool {
 	// wether wm1 contains wm2
 	for (w1, w2) in wm1.iter().zip(wm2) {
-		if *w2 == true && *w1 == false {
+		if *w2 && !*w1 {
 			return false;
 		}
 	}

@@ -87,31 +87,31 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 				if neighbour_ids.is_empty() { neighbour_ids.push(kd_from.id); }
 
-
-				//let b = Vec<(usize, Option<WorldMask>)>::new();
 				// Idea: sample which ones we rewire to?
-				let fwd_edges: Vec<(usize, Option<WorldMask>)> = neighbour_ids.iter()
+				let fwd_edges: Vec<(usize, WorldMask)> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
 					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
 					.filter(|(_, validity)| validity.is_some())
+					.map(|(id, validity)| (id, validity.unwrap()))
 					.collect();
 
-				let bwd_edges: Vec<(usize, Option<WorldMask>)> = neighbour_ids.iter()
+				let bwd_edges: Vec<(usize, WorldMask)> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
 					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
 					.filter(|(_, validity)| validity.is_some())
+					.map(|(id, validity)| (id, validity.unwrap()))
 					.collect();
 							
 				// connect neighbors to new node
 				for (id, validity) in fwd_edges {
-					self.graph.add_edge(id, new_node_id, validity.expect("None validity should be filtered at this stage"));
-					self.conservative_reachability.add_edge(id, new_node_id);
+					self.conservative_reachability.add_edge(id, new_node_id, &validity);
+					self.graph.add_edge(id, new_node_id, validity);
 				}
 
 				// connect new node to neighbor
 				for (id, validity) in bwd_edges {
-					self.graph.add_edge(new_node_id, id, validity.expect("None validity should be filtered at this stage"));
-					self.conservative_reachability.add_edge(new_node_id, id);
+					self.conservative_reachability.add_edge(new_node_id, id, &validity);
+					self.graph.add_edge(new_node_id, id, validity);
 				}
 
 				let finality = goal(&new_state);

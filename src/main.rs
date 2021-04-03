@@ -10,124 +10,6 @@ use po_rrt::{
 };
 use bitvec::prelude::*;
 
-use orbtk::prelude::*;
-use std::cell::Cell;
-
-use euc::{buffer::Buffer2d, rasterizer, Pipeline};
-
-#[derive(Clone, PartialEq, Pipeline)]
-struct PRMPipeline {
-    step: Cell<f64>,
-    image: Image
-}
-
-impl PRMPipeline {
-    pub fn new() -> Self {
-        PRMPipeline{
-            step: Cell::new(0.0),
-            image: Image::from_path(std::path::Path::new("data/map2.png")).unwrap()
-        }
-    }
-}
-
-impl RenderPipeline for PRMPipeline {
-    fn draw(&self, render_target: &mut RenderTarget) {
-        let mut render_context =
-        RenderContext2D::new(render_target.width(), render_target.height());
-
-        //let image = ;
-        render_context.draw_image(&self.image, 0.0, 0.0);
-
-        render_context.set_stroke_style(utils::Brush::SolidColor(Color::from("#00AA00")));
-        render_context.set_line_width(2.0);
-        render_context.begin_path();
-        render_context.move_to(self.step.get(), self.step.get());
-        render_context.line_to(100.0, 100.0);
-        render_context.stroke();
-
-        render_context.restore();
-        render_target.draw(render_context.data());
-    }
-}
-
-#[derive(Default, AsAny)]
-pub struct MainViewState {
-    step: f64,
-}
-
-impl MainViewState {
-    fn step(&mut self) {
-        self.step += 32.0;
-    }
-}
-
-impl State for MainViewState {
-    fn update(&mut self, _: &mut Registry, ctx: &mut Context) {
-        if let Some(cube) = ctx
-            .widget()
-            .get_mut::<DefaultRenderPipeline>("render_pipeline")
-            .0
-            .as_any()
-            .downcast_ref::<PRMPipeline>()
-        {
-            cube.step.set(self.step);
-        }
-    }
-}
-
-widget!(
-    MainView<MainViewState> {
-         render_pipeline: DefaultRenderPipeline
-    }
-);
-
-impl Template for MainView {
-    fn template(self, id: Entity, ctx: &mut BuildContext) -> Self {
-        self.name("MainView")
-            .render_pipeline(DefaultRenderPipeline(Box::new(PRMPipeline::new())))
-            .child(
-                Grid::new()
-                    .rows("*, auto")
-                    .child(
-                        Canvas::new()
-                            .attach(Grid::row(0))
-                            .render_pipeline(id)
-                            .build(ctx),
-                    )
-                    .child(
-                        Button::new()
-                            .text("step")
-                            .v_align("end")
-                            .attach(Grid::row(1))
-                            .margin(4.0)
-                            .on_click(move |states, _| {
-                                states.get_mut::<MainViewState>(id).step();
-                                true
-                            })
-                            .build(ctx),
-                    )
-                    .build(ctx),
-            )
-    }
-}
-
-fn display(){
-   // use this only if you want to run it as web application.
-   orbtk::initialize();
-
-   Application::new()
-       .window(|ctx| {
-           Window::new()
-               .title("OrbTk - canvas example")
-               .position((100.0, 100.0))
-               .size(1000.0, 1000.0)
-               .resizeable(false)
-               .child(MainView::new().build(ctx))
-               .build(ctx)
-       })
-       .run();
-}
-
 fn main() {
     let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map4_zone_ids.pgm", 0.3);
@@ -140,7 +22,7 @@ fn main() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.075, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![1.0/16.0; 16] ); //&vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
 

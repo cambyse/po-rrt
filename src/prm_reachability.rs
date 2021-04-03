@@ -33,13 +33,13 @@ impl Reachability {
 		self.finality.push(finality);
 	}
 
-	pub fn add_edge(&mut self, from: usize, to: usize) {
+	pub fn add_edge(&mut self, from: usize, to: usize, edge_validity: &WorldMask) {
 		// this version appears to be the fastest, see cargo bench
 		for i in 0..self.reachability[to].len() {
 			let r_to = self.reachability[to][i];
 			let r_from = self.reachability[from][i];
-			let v_to = self.validity[to][i];
-			self.reachability[to].set(i, r_to || r_from && v_to);
+			let v_from_to = edge_validity[i];
+			self.reachability[to].set(i, r_to || r_from && v_from_to);
 		}
 	}
 
@@ -105,9 +105,9 @@ fn test_reachability() {
 	reachability.add_node(bitvec![1,0]); // 2
 	reachability.add_node(bitvec![0,1]); // 3
 
-	reachability.add_edge(0, 1);
-	reachability.add_edge(1, 2);
-	reachability.add_edge(1, 3);
+	reachability.add_edge(0, 1, &bitvec![1,0]);
+	reachability.add_edge(1, 2, &bitvec![1,0]);
+	reachability.add_edge(1, 3, &bitvec![0,1]);
 
 	assert_eq!(reachability.reachability(0), &bitvec![1,1]);
 	assert_eq!(reachability.reachability(1), &bitvec![1,0]);
@@ -131,10 +131,10 @@ fn test_reachability_diamond_shape() {
 	reachability.add_node(bitvec![0,1]); // 2
 	reachability.add_node(bitvec![1,1]); // 3
 
-	reachability.add_edge(0, 1);
-	reachability.add_edge(0, 2);
-	reachability.add_edge(1, 3);
-	reachability.add_edge(2, 3);
+	reachability.add_edge(0, 1, &bitvec![1,0]);
+	reachability.add_edge(0, 2, &bitvec![0,1]);
+	reachability.add_edge(1, 3, &bitvec![1,1]);
+	reachability.add_edge(2, 3, &bitvec![1,1]);
 
 	assert_eq!(reachability.reachability(0), &bitvec![1,1]);
 	assert_eq!(reachability.reachability(1), &bitvec![1,0]);
@@ -158,9 +158,9 @@ fn test_final_nodes_completness() {
 	reachability.add_node(bitvec![1,0]); // 2
 	reachability.add_node(bitvec![0,1]); // 3
 
-	reachability.add_edge(0, 1);
-	reachability.add_edge(1, 2);
-	reachability.add_edge(1, 3);
+	reachability.add_edge(0, 1, &bitvec![1,1]);
+	reachability.add_edge(1, 2, &bitvec![1,0]);
+	reachability.add_edge(1, 3, &bitvec![0,1]);
 
 	assert_eq!(reachability.is_final_set_complete(), false);
 
@@ -190,9 +190,9 @@ fn test_final_nodes_completness_when_2_different_goals_for_2_different_worlds() 
 	reachability.add_node(bitvec![1,1]); // 2
 	reachability.add_node(bitvec![1,1]); // 3
 
-	reachability.add_edge(0, 1);
-	reachability.add_edge(1, 2);
-	reachability.add_edge(1, 3);
+	reachability.add_edge(0, 1, &bitvec![1,1]);
+	reachability.add_edge(1, 2, &bitvec![1,1]);
+	reachability.add_edge(1, 3, &bitvec![1,1]);
 
 	reachability.add_final_node(2, bitvec![1,0]);
 	assert_eq!(reachability.is_final_set_complete(), false);
