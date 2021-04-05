@@ -72,6 +72,7 @@ pub struct Map
 	n_zones: usize,
 	n_worlds: usize,
 	zones_to_worlds: Vec<WorldMask>,
+	world_validities: Vec<WorldMask>,
 	zone_positions: Vec<[f64;2]>,
 	visibility_distance: f64
 }
@@ -91,9 +92,8 @@ impl Map {
 
 		let img = DynamicImage::ImageLuma8(img).to_rgb8();
 
-		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new(), zone_positions: Vec::new(), visibility_distance: 0.0}
+		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new(), world_validities: Vec::new(), zone_positions: Vec::new(), visibility_distance: 0.0}
 	}
-
 
 	fn open_image(filepath : &str) -> image::GrayImage {
 		let img = image::open(filepath).unwrap_or_else(|_| panic!("Impossible to open image: {}", filepath));
@@ -116,6 +116,10 @@ impl Map {
 		for i in 0..self.n_zones {
 			self.zones_to_worlds.push(self.zone_index_to_world_mask(i));
 		}
+
+		self.world_validities = self.zones_to_worlds.clone();
+		self.world_validities.push(bitvec![1; self.n_worlds]);
+		//println!("{:?}:", &self.zones_to_worlds);
 	}
 
 	fn init_zone_ids(&mut self) {
@@ -423,7 +427,7 @@ impl Map {
 			panic!("Invalid world id");
 		}
 
-		self.draw_graph_from_root_impl(graph, &|node|{node.validity[world]})
+		self.draw_graph_from_root_impl(graph, &|node|{graph.validities[node.validity_id][world]})
 	}
 
 	pub fn draw_graph_from_root_impl(&mut self, graph: &PRMGraph<2>, validator: &dyn Fn(&PRMNode<2>) -> bool) {
@@ -500,29 +504,34 @@ impl RRTFuncs<2> for Map {
 }
 
 impl PRMFuncs<2> for Map {
-	fn state_validity(&self, state: &[f64; 2]) -> Option<WorldMask> {
+	fn n_worlds(&self) -> usize {
+		self.n_worlds
+	}
+
+	fn state_validity(&self, state: &[f64; 2]) -> Option<usize> {
 		match self.is_state_valid(state) {
-			Belief::Zone(zone_index) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
-			Belief::Free => {Some(bitvec![1; self.n_worlds])},
+			Belief::Zone(zone_index) => {Some(zone_index)}, // TODO: improve readability
+			Belief::Free => {Some(self.world_validities.len() - 1)},
 			Belief::Obstacle => None
 		}
 	}
 
-	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> Option<WorldMask> {
-		// needed -> benchmark
+	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> Option<usize> {
+		// needed -> TODO: compare with and without and benchmark
+		/*
 		let symbolic_validity = from.validity.iter().zip(&to.validity)
 		.any(|(a, b)| *a && *b);
 
 		if !symbolic_validity {
 			return None
-		}
+		}*/
 		//
 		
 		let geometric_validitiy = self.get_traversed_space(&from.state, &to.state);
 
 		match geometric_validitiy {
-			Belief::Zone(zone_index) => {Some(self.zones_to_worlds[zone_index].clone())}, // TODO: improve readability
-			Belief::Free => {Some(bitvec![1; self.n_worlds])},
+			Belief::Zone(zone_index) => {Some(zone_index)}, // TODO: improve readability
+			Belief::Free => {Some(self.world_validities.len() - 1)},
 			Belief::Obstacle => None
 		}
 	}
@@ -554,6 +563,10 @@ impl PRMFuncs<2> for Map {
 		}
 
 		reachable_beliefs
+	}
+
+	fn world_validities(&self) -> Vec<WorldMask> {
+		self.world_validities.clone()
 	}
 
 	fn observe(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
@@ -630,6 +643,8 @@ fn test_map_1_states() {
 	let mut map = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map1_zone_ids.pgm", 0.1);
 
+	let world_validities = map.world_validities();
+
 	// zone status
 	assert_eq!(map.get_zone_status(0, 0).unwrap(), false);// world 0 corresponds to all variations invalid
 	assert_eq!(map.get_zone_status(1, 0).unwrap(), true); // world 1 corresponds to door with index 2^0 open
@@ -639,8 +654,8 @@ fn test_map_1_states() {
 
 	// world validities
 	assert_eq!(map.state_validity(&[0.1, 0.12]), None); // obstacle
-	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1, 1]); // free space
-	assert_eq!(map.state_validity(&[0.57, 0.11]).unwrap(), bitvec![0, 1]); // on door
+	assert_eq!(world_validities[map.state_validity(&[0.0, 0.0]).unwrap()], bitvec![1, 1]); // free space
+	assert_eq!(world_validities[map.state_validity(&[0.57, 0.11]).unwrap()], bitvec![0, 1]); // on door
 }
 
 // MAP 2 zones
@@ -657,13 +672,14 @@ fn test_map_2_construction() {
 fn test_map_2_states() {
 	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+	let world_validities = map.world_validities();
 
 	// world validity
 	assert_eq!(map.state_validity(&[0.1, 0.12]), None); // obstacle
-	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1,1,1,1]); // free space
+	assert_eq!(world_validities[map.state_validity(&[0.0, 0.0]).unwrap()], bitvec![1,1,1,1]); // free space
 
-	assert_eq!(map.state_validity(&[0.51, -0.41]).unwrap(), bitvec![0,1,0,1]); // zone 0
-	assert_eq!(map.state_validity(&[0.57, 0.09]).unwrap(), bitvec![0,0,1,1]); // zone 1
+	assert_eq!(world_validities[map.state_validity(&[0.51, -0.41]).unwrap()], bitvec![0,1,0,1]); // zone 0
+	assert_eq!(world_validities[map.state_validity(&[0.57, 0.09]).unwrap()], bitvec![0,0,1,1]); // zone 1
 }
 
 #[test]
@@ -725,6 +741,18 @@ fn test_map_2_reachable_beliefs() {
 	assert!(reachable_beliefs.contains(&vec![0.0, 0.0, 0.0, 1.0]));
 }
 
+#[test]
+fn test_map_2_world_validities() {
+	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+
+	let world_validities = map.world_validities();
+	assert_eq!(world_validities.len(), 3); 
+	assert!(world_validities.contains(&bitvec![1, 1, 1, 1])); // always valid
+	assert!(world_validities.contains(&bitvec![0, 1, 0, 1])); // valid only when first zone open 
+	assert!(world_validities.contains(&bitvec![0, 0, 1, 1])); // valid only when second door open
+}
+
 // MAP 4 zones
 #[test]
 fn test_map_4_construction() {
@@ -740,6 +768,8 @@ fn test_map_4_states() {
 	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	map.add_zones("data/map4_zone_ids.pgm", 0.1);
 
+	let world_validities = map.world_validities();
+
 	// door validity
 	assert_eq!(map.is_state_valid(&[0.0, 0.0]), Belief::Free);
 	assert_eq!(map.is_state_valid(&[0.0, -0.24]), Belief::Obstacle);
@@ -747,7 +777,7 @@ fn test_map_4_states() {
 
 	// world validities
 	assert_eq!(map.state_validity(&[-0.29, -0.23]), None);
-	assert_eq!(map.state_validity(&[0.0, 0.0]).unwrap(), bitvec![1; 16]);
+	assert_eq!(world_validities[map.state_validity(&[0.0, 0.0]).unwrap()], bitvec![1; 16]);
 
 	// world ennumerations
 	let mut world_mask = bitvec![0; 16];

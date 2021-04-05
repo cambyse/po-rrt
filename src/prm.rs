@@ -33,9 +33,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   discrete_sampler,
 			   fns, 
 			   kdtree: KdTree::new([0.0; N]),
-			   n_worlds: 0, 
+			   n_worlds: fns.n_worlds(), 
 			   n_it: 0,
-			   graph: PRMGraph{nodes: vec![]},
+			   graph: PRMGraph{nodes: vec![], validities: fns.world_validities().clone()},
 			   final_node_ids: Vec::new(),
 			   conservative_reachability: Reachability::new(), 
 			   node_to_belief_nodes: Vec::new(),
@@ -48,10 +48,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		println!("grow graph..");
 
-		let root_validity = self.fns.state_validity(&start).expect("Start from a valid state!");
-		self.n_worlds = root_validity.len();
-		self.graph.add_node(start, root_validity.clone());
-		self.conservative_reachability.set_root(root_validity);
+		let root_validity_id = self.fns.state_validity(&start).expect("Start from a valid state!");
+		self.graph.add_node(start, root_validity_id);
+		self.conservative_reachability.set_root(self.graph.validities[root_validity_id].clone());
 		self.kdtree.reset(start);
 
 		let mut i = 0;
@@ -66,11 +65,11 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			let kd_from = self.kdtree.nearest_neighbor_filtered(new_state, |id|{self.conservative_reachability.reachability(id)[world]}); // log n
 			steer(&kd_from.state, &mut new_state, max_step); 
 
-			if let Some(state_validity) = self.fns.state_validity(&new_state) {
+			if let Some(state_validity_id) = self.fns.state_validity(&new_state) {
 				// Third, add node
-				let new_node_id = self.graph.add_node(new_state, state_validity.clone());
+				let new_node_id = self.graph.add_node(new_state, state_validity_id);
 				let new_node = &self.graph.nodes[new_node_id];
-				self.conservative_reachability.add_node(state_validity.clone());
+				self.conservative_reachability.add_node(self.graph.validities[state_validity_id].clone());
 
 				// Fourth, we find the neighbors in a specific radius of new_state.
 				let radius = {
@@ -87,30 +86,30 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				if neighbour_ids.is_empty() { neighbour_ids.push(kd_from.id); }
 
 				// Idea: sample which ones we rewire to?
-				let fwd_edges: Vec<(usize, WorldMask)> = neighbour_ids.iter()
+				let fwd_edges: Vec<(usize, usize)> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
 					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
-					.filter(|(_, validity)| validity.is_some())
-					.map(|(id, validity)| (id, validity.unwrap()))
+					.filter(|(_, validity_id)| validity_id.is_some())
+					.map(|(id, validity_id)| (id, validity_id.unwrap()))
 					.collect();
 
-				let bwd_edges: Vec<(usize, WorldMask)> = neighbour_ids.iter()
+				let bwd_edges: Vec<(usize, usize)> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
 					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
-					.filter(|(_, validity)| validity.is_some())
-					.map(|(id, validity)| (id, validity.unwrap()))
+					.filter(|(_, validity_id)| validity_id.is_some())
+					.map(|(id, validity_id)| (id, validity_id.unwrap()))
 					.collect();
 							
 				// connect neighbors to new node
-				for (id, validity) in fwd_edges {
-					self.conservative_reachability.add_edge(id, new_node_id, &validity);
-					self.graph.add_edge(id, new_node_id, validity);
+				for (id, validity_id) in fwd_edges {
+					self.conservative_reachability.add_edge(id, new_node_id, &self.graph.validities[validity_id]);
+					self.graph.add_edge(id, new_node_id, validity_id);
 				}
 
 				// connect new node to neighbor
-				for (id, validity) in bwd_edges {
-					self.conservative_reachability.add_edge(new_node_id, id, &validity);
-					self.graph.add_edge(new_node_id, id, validity);
+				for (id, validity_id) in bwd_edges {
+					self.conservative_reachability.add_edge(new_node_id, id, &self.graph.validities[validity_id]);
+					self.graph.add_edge(new_node_id, id, validity_id);
 				}
 
 				let finality = goal(&new_state);
@@ -159,6 +158,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn build_belief_graph(&mut self, start_belief_state: &BeliefState) {
 		// build belief state graph
 		let reachable_belief_states = self.fns.reachable_belief_states(start_belief_state);
+		let world_validities = self.fns.world_validities();
+		let compatibilities = self.compute_compatibility(&reachable_belief_states, &world_validities);
+
 		let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
 		let mut node_to_belief_nodes: Vec<Vec<Option<usize>>> = vec![vec![None; reachable_belief_states.len()]; self.graph.n_nodes()];
 		
@@ -167,8 +169,10 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
 				let belief_node_id = belief_space_graph.add_node(node.state, belief_state.clone(), belief_id, BeliefNodeType::Unknown);
 
-				if is_compatible(belief_state, &node.validity) {
+				if compatibilities[belief_id][node.validity_id] {
 					node_to_belief_nodes[id][belief_id] = Some(belief_node_id);
+					belief_space_graph.nodes[belief_node_id].children.reserve(node.children.len());
+					belief_space_graph.nodes[belief_node_id].parents.reserve(node.parents.len());
 				}
 			}
 		}
@@ -209,7 +213,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					for child_edge in &node.children {
 						if let Some(child_id) = node_to_belief_nodes[child_edge.id][belief_id] {
 
-							if is_compatible(&belief_space_graph.nodes[parent_id].belief_state, &child_edge.validity) {
+							let parent_belief_id = belief_space_graph.nodes[parent_id].belief_id;
+							let child_validity_id = child_edge.validity_id;
+							if compatibilities[parent_belief_id][child_validity_id] {
 								belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Action;
 								belief_space_graph.add_edge(parent_id, child_id);
 							}
@@ -221,6 +227,18 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		self.node_to_belief_nodes = node_to_belief_nodes;
 		self.belief_graph = belief_space_graph;
+	}
+
+	pub fn compute_compatibility(&self, belief_states: &Vec<BeliefState>, world_validities: &Vec<WorldMask>) -> Vec<Vec<bool>> {
+		let mut compatibilities = vec![vec![false; world_validities.len()]; belief_states.len()];
+
+		for belief_id in 0..belief_states.len() {
+			for validity_id in 0..world_validities.len() {
+				compatibilities[belief_id][validity_id] = is_compatible(&belief_states[belief_id], &world_validities[validity_id]);
+			}
+		}
+
+		compatibilities
 	}
 
 	pub fn compute_expected_costs_to_goals(&mut self) {
@@ -369,21 +387,22 @@ fn test_build_belief_graph() {
 						   &m);
 	// mock graph growth
 	prm.n_worlds = 2;
+	prm.graph.validities = vec![bitvec![0, 1], bitvec![1, 0], bitvec![1, 1]];
 
-	prm.graph.add_node([0.55, -0.8], bitvec![1, 1]); // 0
-	prm.graph.add_node([-0.42, -0.38], bitvec![1, 1]); // 1
-	prm.graph.add_node([0.54, 0.0], bitvec![1, 1]);   // 2
-	prm.graph.add_node([0.54, 0.1], bitvec![0, 1]);   // 3
-	prm.graph.add_node([-0.97, 0.65], bitvec![1, 1]); // 4
-	prm.graph.add_node([0.55, 0.9], bitvec![1, 1]);   // 5
+	prm.graph.add_node([0.55, -0.8], 2); // 0
+	prm.graph.add_node([-0.42, -0.38], 2); // 1
+	prm.graph.add_node([0.54, 0.0], 2);   // 2
+	prm.graph.add_node([0.54, 0.1], 0);   // 3
+	prm.graph.add_node([-0.97, 0.65], 2); // 4
+	prm.graph.add_node([0.55, 0.9], 2);   // 5
 
-	prm.graph.add_bi_edge(0, 1, bitvec![1, 1]);
-	prm.graph.add_bi_edge(1, 2, bitvec![1, 1]);
-	prm.graph.add_bi_edge(2, 3, bitvec![0, 1]);
-	prm.graph.add_bi_edge(3, 5, bitvec![0, 1]);
+	prm.graph.add_bi_edge(0, 1, 2);
+	prm.graph.add_bi_edge(1, 2, 2);
+	prm.graph.add_bi_edge(2, 3, 0);
+	prm.graph.add_bi_edge(3, 5, 0);
 
-	prm.graph.add_bi_edge(1, 4, bitvec![1, 1]);
-	prm.graph.add_bi_edge(4, 5, bitvec![1, 1]);
+	prm.graph.add_bi_edge(1, 4, 2);
+	prm.graph.add_bi_edge(4, 5, 2);
 
 	prm.final_node_ids.push(5);
 	//

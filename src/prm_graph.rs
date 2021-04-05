@@ -4,7 +4,7 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*;
-use std::{cmp::min, collections::btree_set::Difference, convert::TryInto, vec};
+use std::{cmp::min, collections::btree_set::Difference, convert::TryInto, ops::Index, vec};
 
 use std::io::BufWriter;
 use std::io::BufReader;
@@ -22,7 +22,7 @@ use minilp::{ComparisonOp, OptimizationDirection, Problem, Variable};
 #[derive(Serialize, Deserialize)]
 pub struct SerializablePRMNode {
 	pub state: Vec<f64>,
-	pub validity: Vec<bool>,
+	pub validity_id: usize,
 	pub parents: Vec<SerializablePRMEdge>,
 	pub children: Vec<SerializablePRMEdge>,
 }
@@ -30,7 +30,7 @@ pub struct SerializablePRMNode {
 #[derive(Serialize, Deserialize)]
 pub struct SerializablePRMEdge {
 	pub id: usize,
-	pub validity: Vec<bool>,
+	pub validity_id: usize,
 }
 
 impl SerializablePRMEdge {
@@ -38,14 +38,14 @@ impl SerializablePRMEdge {
 	pub fn from_prm_edge(edge : &PRMEdge) -> Self {
 		Self{
 			id: edge.id,			
-			validity: edge.validity.iter().map(|b| !!b).collect(),
+			validity_id: edge.validity_id,
 		}
 	}
 
 	pub fn to_prm_edge(&self) -> PRMEdge {
 		PRMEdge {
 			id: self.id,
-			validity: self.validity.iter().collect(),
+			validity_id: self.validity_id,
 		}
 	}
 }
@@ -55,7 +55,7 @@ impl SerializablePRMNode {
 	pub fn from_prm_node(node : &PRMNode<2>) -> Self {
 		Self{
 			state: node.state.to_vec(),			
-			validity: node.validity.iter().map(|b| !!b).collect(),
+			validity_id: node.validity_id,
 			parents: node.parents.iter().map(|edge| SerializablePRMEdge::from_prm_edge(edge)).collect(),
 			children: node.children.iter().map(|edge| SerializablePRMEdge::from_prm_edge(edge)).collect()
 		}
@@ -64,7 +64,7 @@ impl SerializablePRMNode {
 	pub fn to_prm_node(&self) -> PRMNode<2> {
 		PRMNode {
 			state: self.state.clone().try_into().unwrap(),
-			validity: self.validity.iter().collect(),
+			validity_id: self.validity_id,
 			parents: self.parents.iter().map(|edge| SerializablePRMEdge::to_prm_edge(edge)).collect(),
 			children: self.children.iter().map(|edge| SerializablePRMEdge::to_prm_edge(edge)).collect(),
 		}
@@ -75,19 +75,30 @@ impl SerializablePRMNode {
 #[derive(Serialize, Deserialize)]
 pub struct SerializablePRMGraph {
 	pub nodes: Vec<SerializablePRMNode>,
+	pub validities: Vec<Vec<bool>>
 }
 
 impl SerializablePRMGraph {
 	pub fn from_prm_graph_(prm_graph: &PRMGraph<2>) -> SerializablePRMGraph {
 		let nodes = &prm_graph.nodes;
 		SerializablePRMGraph {
-			nodes: nodes.iter().map(|node| SerializablePRMNode::from_prm_node(&node)).collect()
+			nodes: nodes.iter().map(|node| SerializablePRMNode::from_prm_node(&node)).collect(),
+			validities: prm_graph.validities.iter().map(|validity| SerializablePRMGraph::from_prm_validity(&validity) ).collect()
 		}
 	}
 
 	pub fn save_(&self, filename: &str) {
 		let writer = BufWriter::new(File::create(filename).expect("can't create file"));
 		serde_json::to_writer_pretty(writer, &self).expect("error happened while dumping prm graph to file");
+	}
+
+
+	pub fn from_prm_validity(validity: &WorldMask) -> Vec<bool> {
+		validity.iter().map(|b| !!b).collect()
+	}
+
+	pub fn to_prm_validity(validity: &Vec<bool>) -> WorldMask {
+		validity.iter().collect()
 	}
 }
 
@@ -101,26 +112,36 @@ pub fn load(filename: &str) -> PRMGraph<2> {
 	let graph: SerializablePRMGraph = serde_json::from_reader(reader).unwrap();
 
 	PRMGraph {
-		nodes: graph.nodes.into_iter().map(|node| node.to_prm_node()).collect()
+		nodes: graph.nodes.into_iter().map(|node| node.to_prm_node()).collect(),
+		validities: graph.validities.iter().map(|validity| SerializablePRMGraph::to_prm_validity(validity)).collect()
 	}
 }
 
 /****************************PRM Graph******************************/
 pub trait PRMFuncs<const N: usize> {
-	fn state_validity(&self, _state: &[f64; N]) -> Option<WorldMask> {
+	fn n_worlds(&self) -> usize {
+		1
+	}
+
+	fn state_validity(&self, _state: &[f64; N]) -> Option<usize> {
 		None
 	}
 
-	fn transition_validator(&self, from: &PRMNode<N>, to: &PRMNode<N>) -> Option<WorldMask> {
+	fn transition_validator(&self, from: &PRMNode<N>, to: &PRMNode<N>) -> Option<usize> {
 		//let validity = from.validity.iter().zip(&to.validity)
 		//.any(|(a, b)| *a && *b);
 
-		let validity: WorldMask = from.validity.iter().zip(&to.validity)
+		let world_validities = self.world_validities();
+
+		let from_validity = &world_validities[from.validity_id];
+		let to_validity = &world_validities[to.validity_id];
+
+		let validity: WorldMask = from_validity.iter().zip(to_validity)
 		.map(|(a, b)| *a && *b)
 		.collect();
 
-		if validity.any() {
-			return Some(validity);
+		if world_validities.contains(&validity) {
+			return Some(world_validities.iter().position(|v| *v == validity).expect("validity should be in the world validities"));
 		}
 		
 		None
@@ -136,6 +157,11 @@ pub trait PRMFuncs<const N: usize> {
 	}
 
 	#[allow(clippy::style)]
+	fn world_validities(&self) -> Vec<WorldMask> {
+		vec![]
+	}
+
+	#[allow(clippy::style)]
 	fn observe(&self, _state: &[f64; N], belief_state: &BeliefState) -> Vec<BeliefState> {
 		vec![belief_state.to_owned()]
 	}
@@ -144,7 +170,7 @@ pub trait PRMFuncs<const N: usize> {
 #[derive(Clone)]
 pub struct PRMNode<const N: usize> {
 	pub state: [f64; N],
-	pub validity: WorldMask,
+	pub validity_id: usize,
 	pub parents: Vec<PRMEdge>,
 	pub children: Vec<PRMEdge>,
 }
@@ -152,7 +178,7 @@ pub struct PRMNode<const N: usize> {
 #[derive(Clone)]
 pub struct PRMEdge {
 	pub id: usize,
-	pub validity: WorldMask
+	pub validity_id: usize
 }
 
 impl<const N: usize> GraphNode<N> for PRMNode<N> {
@@ -164,24 +190,25 @@ impl<const N: usize> GraphNode<N> for PRMNode<N> {
 #[derive(Clone)]
 pub struct PRMGraph<const N: usize> {
 	pub nodes: Vec<PRMNode<N>>,
+	pub validities: Vec<WorldMask>,
 }
 
 impl<const N: usize> PRMGraph<N> {
-	pub fn add_node(&mut self, state: [f64; N], state_validity: WorldMask) -> usize {
+	pub fn add_node(&mut self, state: [f64; N], state_validity_id: usize) -> usize {
 		let id = self.nodes.len();
-		let node = PRMNode { state, validity: state_validity, parents: Vec::new(), children: Vec::new() };
+		let node = PRMNode { state, validity_id: state_validity_id, parents: Vec::new(), children: Vec::new() };
 		self.nodes.push(node);
 		id
 	}
 
-	pub fn add_edge(&mut self, from_id: usize, to_id: usize, validity: WorldMask) {
-		self.nodes[from_id].children.push(PRMEdge{id: to_id, validity: validity.clone()});
-		self.nodes[to_id].parents.push(PRMEdge{id:from_id, validity});
+	pub fn add_edge(&mut self, from_id: usize, to_id: usize, validity_id: usize) {
+		self.nodes[from_id].children.push(PRMEdge{id: to_id, validity_id});
+		self.nodes[to_id].parents.push(PRMEdge{id:from_id, validity_id});
 	}
 
-	pub fn add_bi_edge(&mut self, id1: usize, id2: usize, validity: WorldMask) {
-		self.add_edge(id1, id2, validity.clone());
-		self.add_edge(id2, id1, validity);
+	pub fn add_bi_edge(&mut self, id1: usize, id2: usize, validity_id: usize) {
+		self.add_edge(id1, id2, validity_id);
+		self.add_edge(id2, id1, validity_id);
 	}
 
 	pub fn remove_edge(&mut self, from_id: usize, to_id: usize) {
@@ -231,14 +258,14 @@ impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
 		//panic!("deprecated!");
 		self.graph.nodes[id].children.iter()
 			.map(|edge| edge.id)
-			.filter(|&id| self.graph.nodes[id].validity[self.world])
+			.filter(|&id| self.graph.validities[self.graph.nodes[id].validity_id][self.world])
 			.collect()
 	}
 	fn parents(& self, id:usize) -> Vec<usize> {
 		//panic!("deprecated!");
 		self.graph.nodes[id].parents.iter()
 			.map(|edge| edge.id)
-			.filter(|&id| self.graph.nodes[id].validity[self.world])
+			.filter(|&id| self.graph.validities[self.graph.nodes[id].validity_id][self.world])
 			.collect()
 	}
 }
@@ -352,10 +379,10 @@ fn create_minimal_graph() -> PRMGraph<2> {
 	/*
 	0->-1
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new()};
-	graph.add_node([0.0, 0.0], bitvec![1]);   
-	graph.add_node([1.0, 0.0], bitvec![1]);   
-	graph.add_edge(0, 1, bitvec![1]);
+	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
+	graph.add_node([0.0, 0.0], 0);   
+	graph.add_node([1.0, 0.0], 0);   
+	graph.add_edge(0, 1, 0);
 
 	graph
 }
@@ -368,37 +395,37 @@ fn create_grid_graph() -> PRMGraph<2> {
     |   |   |
 	0---1---2
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new()};
+	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
 	// nodes
-	graph.add_node([0.0, 0.0], bitvec![1]);   // 0
-	graph.add_node([1.0, 0.0], bitvec![1]);   // 1
-	graph.add_node([2.0, 0.0], bitvec![1]);   // 2
+	graph.add_node([0.0, 0.0], 0);   // 0
+	graph.add_node([1.0, 0.0], 0);   // 1
+	graph.add_node([2.0, 0.0], 0);   // 2
 
-	graph.add_node([0.0, 1.0], bitvec![1]);   // 3
-	graph.add_node([1.0, 1.0], bitvec![1]);   // 4
-	graph.add_node([2.0, 1.0], bitvec![1]);   // 5
+	graph.add_node([0.0, 1.0], 0);   // 3
+	graph.add_node([1.0, 1.0], 0);   // 4
+	graph.add_node([2.0, 1.0], 0);   // 5
 
-	graph.add_node([0.0, 2.0], bitvec![1]);   // 6
-	graph.add_node([1.0, 2.0], bitvec![1]);   // 7
-	graph.add_node([2.0, 2.0], bitvec![1]);   // 8
+	graph.add_node([0.0, 2.0], 0);   // 6
+	graph.add_node([1.0, 2.0], 0);   // 7
+	graph.add_node([2.0, 2.0], 0);   // 8
  
 	// edges
-	graph.add_bi_edge(0, 1, bitvec![1]);
-	graph.add_bi_edge(1, 2, bitvec![1]);
+	graph.add_bi_edge(0, 1, 0);
+	graph.add_bi_edge(1, 2, 0);
 
-	graph.add_bi_edge(0, 3, bitvec![1]);
-	graph.add_bi_edge(1, 4, bitvec![1]);
-	graph.add_bi_edge(2, 5, bitvec![1]);
+	graph.add_bi_edge(0, 3, 0);
+	graph.add_bi_edge(1, 4, 0);
+	graph.add_bi_edge(2, 5, 0);
 
-	graph.add_bi_edge(3, 4, bitvec![1]);
-	graph.add_bi_edge(4, 5, bitvec![1]);
+	graph.add_bi_edge(3, 4, 0);
+	graph.add_bi_edge(4, 5, 0);
 
-	graph.add_bi_edge(3, 6, bitvec![1]);
-	graph.add_bi_edge(4, 7, bitvec![1]);
-	graph.add_bi_edge(5, 8, bitvec![1]);
+	graph.add_bi_edge(3, 6, 0);
+	graph.add_bi_edge(4, 7, 0);
+	graph.add_bi_edge(5, 8, 0);
 
-	graph.add_bi_edge(6, 7, bitvec![1]);
-	graph.add_bi_edge(7, 8, bitvec![1]);
+	graph.add_bi_edge(6, 7, 0);
+	graph.add_bi_edge(7, 8, 0);
 	graph
 }
 
@@ -408,20 +435,20 @@ fn create_oriented_grid_graph() -> PRMGraph<2> {
     ^   ^
 	0->-1
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new()};
+	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
 
 	// nodes
-	graph.add_node([0.0, 0.0], bitvec![1]);   // 0
-	graph.add_node([1.0, 0.0], bitvec![1]);   // 1
+	graph.add_node([0.0, 0.0], 0);   // 0
+	graph.add_node([1.0, 0.0], 0);   // 1
 
-	graph.add_node([0.0, 1.0], bitvec![1]);   // 2
-	graph.add_node([1.0, 1.0], bitvec![1]);   // 3
+	graph.add_node([0.0, 1.0], 0);   // 2
+	graph.add_node([1.0, 1.0], 0);   // 3
 
 	// edges
-	graph.add_edge(0, 1, bitvec![1]);
-	graph.add_edge(0, 2, bitvec![1]);
-	graph.add_edge(1, 3, bitvec![1]);
-	graph.add_edge(3, 2, bitvec![1]);
+	graph.add_edge(0, 1, 0);
+	graph.add_edge(0, 2, 0);
+	graph.add_edge(1, 3, 0);
+	graph.add_edge(3, 2, 0);
 
 	graph
 }
@@ -434,21 +461,21 @@ fn create_diamond_graph() -> PRMGraph<2> {
 	 \ /
 	  2
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new()};
+	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
 
 	// nodes
-	graph.add_node([0.0, 0.0], bitvec![1]);   // 0
-	graph.add_node([1.0, 1.0], bitvec![1]);   // 1
+	graph.add_node([0.0, 0.0], 0);   // 0
+	graph.add_node([1.0, 1.0], 0);   // 1
 
-	graph.add_node([1.0, -1.0], bitvec![1]);  // 2
-	graph.add_node([2.0, 0.0], bitvec![1]);   // 3
+	graph.add_node([1.0, -1.0], 0);  // 2
+	graph.add_node([2.0, 0.0], 0);   // 3
 
 	// edges
-	graph.add_bi_edge(0, 1, bitvec![1]); 
-	graph.add_bi_edge(0, 3, bitvec![1]); 
-	graph.add_bi_edge(0, 2, bitvec![1]); 
-	graph.add_bi_edge(1, 3, bitvec![1]); 
-	graph.add_bi_edge(2, 3, bitvec![1]);
+	graph.add_bi_edge(0, 1, 0); 
+	graph.add_bi_edge(0, 3, 0); 
+	graph.add_bi_edge(0, 2, 0); 
+	graph.add_bi_edge(1, 3, 0); 
+	graph.add_bi_edge(2, 3, 0);
 
 	graph
 }
@@ -462,20 +489,20 @@ fn create_diamond_graph_2_worlds() -> PRMGraph<2> {
 	  2
 	*/
 	// 1 valid in world 0, 2 valid in world 1
-	let mut graph = PRMGraph{nodes: Vec::new()};
+	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1, 0], bitvec![0, 1], bitvec![1, 1], ]};
 
 	// nodes
-	graph.add_node([0.0, 0.0], bitvec![1, 1]);   // 0
-	graph.add_node([1.0, 1.0], bitvec![1, 0]);   // 1
+	graph.add_node([0.0, 0.0], 2);   // 0
+	graph.add_node([1.0, 1.0], 1);   // 1
 
-	graph.add_node([1.0, -1.0], bitvec![0, 1]);  // 2
-	graph.add_node([2.0, 0.0], bitvec![1, 1]);   // 3
+	graph.add_node([1.0, -1.0], 0);  // 2
+	graph.add_node([2.0, 0.0], 2);   // 3
 
 	// edges
-	graph.add_bi_edge(0, 1, bitvec![1, 0]);
-	graph.add_bi_edge(0, 2, bitvec![0, 1]);
-	graph.add_bi_edge(1, 3, bitvec![1, 0]);
-	graph.add_bi_edge(2, 3, bitvec![0, 1]);
+	graph.add_bi_edge(0, 1, 0);
+	graph.add_bi_edge(0, 2, 1);
+	graph.add_bi_edge(1, 3, 0);
+	graph.add_bi_edge(2, 3, 1);
 
 	graph
 }
@@ -494,6 +521,7 @@ fn test_policy_extraction_on_diamond_graph() {
 
 	struct Funcs {}
 	impl PRMFuncs<2> for Funcs {}
+
 	let dists = dijkstra(&graph, &vec![3], &Funcs{});
 
 	let policy = get_policy_graph(&graph, &vec![dists]).unwrap();
@@ -595,21 +623,24 @@ fn test_dijkstra_on_oriented_grid() {
 
 #[test]
 fn test_world_transitions() {
-	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
-
-	let f = Funcs{};
-
-	fn dummy_node(validity : WorldMask) -> PRMNode<2>	{
-		PRMNode{state: [0.0, 0.0], validity: validity, parents: Vec::new(), children: Vec::new()}
+	struct Funcs {
+		world_validities: Vec<WorldMask>
+	}
+	impl PRMFuncs<2> for Funcs {
+		fn world_validities(&self) -> Vec<WorldMask> {
+			return self.world_validities.clone();
+		}
 	}
 
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1]), &dummy_node(bitvec![1])), Some(bitvec![1]));
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1]), &dummy_node(bitvec![0])), None);
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 0]), &dummy_node(bitvec![1, 0])), Some(bitvec![1, 0]));
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 0]), &dummy_node(bitvec![0, 1])), None);
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![1, 1]), &dummy_node(bitvec![1, 1])), Some(bitvec![1, 1]));
-	assert_eq!(f.transition_validator(&dummy_node(bitvec![0, 0]), &dummy_node(bitvec![1, 1])), None);
+	let f = Funcs{world_validities: vec![bitvec![1, 0], bitvec![0, 1], bitvec![1, 1]]};
+
+	fn dummy_node(validity_id : usize) -> PRMNode<2>	{
+		PRMNode{state: [0.0, 0.0], validity_id, parents: Vec::new(), children: Vec::new()}
+	}
+
+	assert_eq!(f.transition_validator(&dummy_node(0), &dummy_node(0)), Some(0));
+	assert_eq!(f.transition_validator(&dummy_node(0), &dummy_node(1)), None);
+	assert_eq!(f.transition_validator(&dummy_node(2), &dummy_node(2)), Some(2));
 }
 
 }
