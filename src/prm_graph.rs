@@ -92,12 +92,12 @@ impl SerializablePRMGraph {
 		serde_json::to_writer_pretty(writer, &self).expect("error happened while dumping prm graph to file");
 	}
 
-
+	#[allow(clippy::nonminimal_bool)]
 	pub fn from_prm_validity(validity: &WorldMask) -> Vec<bool> {
 		validity.iter().map(|b| !!b).collect()
 	}
 
-	pub fn to_prm_validity(validity: &Vec<bool>) -> WorldMask {
+	pub fn convert_to_prm_validity(validity: &[bool]) -> WorldMask {
 		validity.iter().collect()
 	}
 }
@@ -113,7 +113,7 @@ pub fn load(filename: &str) -> PRMGraph<2> {
 
 	PRMGraph {
 		nodes: graph.nodes.into_iter().map(|node| node.to_prm_node()).collect(),
-		validities: graph.validities.iter().map(|validity| SerializablePRMGraph::to_prm_validity(validity)).collect()
+		validities: graph.validities.iter().map(|validity| SerializablePRMGraph::convert_to_prm_validity(validity)).collect()
 	}
 }
 

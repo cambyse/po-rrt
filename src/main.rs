@@ -32,6 +32,4 @@ fn main() {
     m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/test_plan_on_map4_pomdp_main");
-
-    //display();
 }

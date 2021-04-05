@@ -35,7 +35,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   kdtree: KdTree::new([0.0; N]),
 			   n_worlds: fns.n_worlds(), 
 			   n_it: 0,
-			   graph: PRMGraph{nodes: vec![], validities: fns.world_validities().clone()},
+			   graph: PRMGraph{nodes: vec![], validities: fns.world_validities()},
 			   final_node_ids: Vec::new(),
 			   conservative_reachability: Reachability::new(), 
 			   node_to_belief_nodes: Vec::new(),
@@ -229,11 +229,11 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.belief_graph = belief_space_graph;
 	}
 
-	pub fn compute_compatibility(&self, belief_states: &Vec<BeliefState>, world_validities: &Vec<WorldMask>) -> Vec<Vec<bool>> {
+	pub fn compute_compatibility(&self, belief_states: &[BeliefState], world_validities: &[WorldMask]) -> Vec<Vec<bool>> {
 		let mut compatibilities = vec![vec![false; world_validities.len()]; belief_states.len()];
 
-		for belief_id in 0..belief_states.len() {
-			for validity_id in 0..world_validities.len() {
+		for (belief_id, _) in belief_states.iter().enumerate() {
+			for (validity_id, _) in world_validities.iter().enumerate() {
 				compatibilities[belief_id][validity_id] = is_compatible(&belief_states[belief_id], &world_validities[validity_id]);
 			}
 		}
