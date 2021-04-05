@@ -3,6 +3,8 @@ use std::{iter::Zip, slice::Iter, iter::Iterator};
 use bitvec::prelude::*;
 use std::cmp::Ordering;
 
+use crate::belief_graph;
+
 pub type WorldMask = BitVec;
 pub type BeliefState = Vec<f64>;
 pub type NodeId = usize;
@@ -138,6 +140,17 @@ impl Eq for Priority {}
 
 #[allow(clippy::style)]
 pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
+
+	/*
+	assert_eq!(belief_state.len(), validity.len());
+
+	for i in 0..validity.len() {
+		if !validity[i] && belief_state[i] > 0.0 {
+			return false;
+		}
+	}
+	*/
+
 	for (&p, v) in belief_state.iter().zip(validity) {
 		if p > 0.0 && ! v {
 			return false;

@@ -8,7 +8,6 @@ use crate::prm_graph::*;
 use crate::prm_reachability::*;
 use crate::belief_graph::*;
 use bitvec::prelude::*;
-use std::{collections::HashMap, ops::Index};
 
 pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	continuous_sampler: ContinuousSampler<N>,
@@ -202,19 +201,18 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		// build possible geometric edges (action edges)
 		for (id, node) in self.graph.nodes.iter().enumerate() {
 			for (belief_id, _) in reachable_belief_states.iter().enumerate() {
-				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
+				if let Some(parent_id) = node_to_belief_nodes[id][belief_id] {
+					if belief_space_graph.nodes[parent_id].node_type == BeliefNodeType::Observation {
+						continue;
+					}
 
-				if parent_belief_node_id.is_some() && belief_space_graph.nodes[parent_belief_node_id.unwrap()].node_type == BeliefNodeType::Observation {
-					continue;
-				}
+					for child_edge in &node.children {
+						if let Some(child_id) = node_to_belief_nodes[child_edge.id][belief_id] {
 
-				for child_edge in &node.children {
-					let child_belief_node_id = node_to_belief_nodes[child_edge.id][belief_id];
-
-					if let (Some(parent_id), Some(child_id)) = (parent_belief_node_id, child_belief_node_id) {
-						if is_compatible(&belief_space_graph.nodes[parent_id].belief_state, &child_edge.validity) {
-							belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Action;
-							belief_space_graph.add_edge(parent_id, child_id);
+							if is_compatible(&belief_space_graph.nodes[parent_id].belief_state, &child_edge.validity) {
+								belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Action;
+								belief_space_graph.add_edge(parent_id, child_id);
+							}
 						}
 					}
 				}
