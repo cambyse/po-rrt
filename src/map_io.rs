@@ -1,5 +1,6 @@
 use crate::{rrt::{Reachable, RRTFuncs, RRTTree}};
 use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
+use crate::prm_policy_refiner::*;
 use crate::common::*;
 use image::{DynamicImage, GenericImageView, Luma};
 use image::DynamicImage::ImageLuma8;
@@ -375,6 +376,25 @@ impl Map {
 			for &child_id in &parent.children {
 				let child = &policy.nodes[child_id];
 				self.draw_line(parent.state, child.state, BLACK, 1.0);
+			}
+		}
+	}
+
+	pub fn draw_refinment_trees(&mut self, refinment_trees: &Vec<RefinmentTree<2>>) {
+		for tree in refinment_trees.iter().skip(0) {
+			self.draw_refinment_tree(tree);
+			//break;
+		}
+	}
+
+	pub fn draw_refinment_tree(&mut self, refinment_tree: &RefinmentTree<2>) {
+		for to in &refinment_tree.nodes {
+			match to.parent {
+				Some(parent) => {
+					let from = &refinment_tree.nodes[parent.id];
+					self.draw_line(from.state, to.state, YELLOW, 1.0);
+				},
+				_ => {}
 			}
 		}
 	}

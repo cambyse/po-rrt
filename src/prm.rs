@@ -23,7 +23,7 @@ pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	pub conservative_reachability: Reachability,
 	// pomdp
 	node_to_belief_nodes: Vec<Vec<Option<usize>>>,
-	belief_graph: BeliefGraph<N>,
+	pub belief_graph: BeliefGraph<N>,
 	expected_costs_to_goals: Vec<f64>
 }
 
@@ -72,11 +72,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				self.conservative_reachability.add_node(self.graph.validities[state_validity_id].clone());
 
 				// Fourth, we find the neighbors in a specific radius of new_state.
-				let radius = {
-					let n = self.graph.nodes.len() as f64;
-					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
-					if s < max_step { s } else { max_step }
-				};
+				let radius = self.heuristic_radius(max_step, search_radius);
 
 				// Fifth we connect to neighbors 
 				let mut neighbour_ids: Vec<usize> = self.kdtree.nearest_neighbors(new_state, radius).iter()
@@ -159,7 +155,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		// build belief state graph
 		let reachable_belief_states = self.fns.reachable_belief_states(start_belief_state);
 		let world_validities = self.fns.world_validities();
-		let compatibilities = self.compute_compatibility(&reachable_belief_states, &world_validities);
+		let compatibilities = compute_compatibility(&reachable_belief_states, &world_validities);
 
 		let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
 		let mut node_to_belief_nodes: Vec<Vec<Option<usize>>> = vec![vec![None; reachable_belief_states.len()]; self.graph.n_nodes()];
@@ -229,18 +225,6 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.belief_graph = belief_space_graph;
 	}
 
-	pub fn compute_compatibility(&self, belief_states: &[BeliefState], world_validities: &[WorldMask]) -> Vec<Vec<bool>> {
-		let mut compatibilities = vec![vec![false; world_validities.len()]; belief_states.len()];
-
-		for (belief_id, _) in belief_states.iter().enumerate() {
-			for (validity_id, _) in world_validities.iter().enumerate() {
-				compatibilities[belief_id][validity_id] = is_compatible(&belief_states[belief_id], &world_validities[validity_id]);
-			}
-		}
-
-		compatibilities
-	}
-
 	pub fn compute_expected_costs_to_goals(&mut self) {
 		//let mut final_belief_state_node_ids = final_node_ids.iter().fold(Vec::new(), |finals, final_id| { finals.extend(node_to_belief_nodes[final_id]); finals } );
 		let mut final_belief_state_node_ids: Vec<usize> = Vec::new();
@@ -263,6 +247,16 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn print_summary(&self) {
 		println!("number of iterations:{}", self.n_it);
 		self.graph.print_summary();
+	}
+
+	fn heuristic_radius(&self, max_step: f64, search_radius: f64) -> f64 {
+		let radius = {
+			let n = self.graph.nodes.len() as f64;
+			let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
+			if s < max_step { s } else { max_step }
+		};
+
+		radius
 	}
 }
 

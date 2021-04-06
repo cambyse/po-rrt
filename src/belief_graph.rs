@@ -161,7 +161,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
     let mut policy: Policy<N> = Policy{nodes: Vec::new(), leafs: Vec::new()};
     let mut lifo: Vec<(usize, usize)> = Vec::new(); // policy_node, belief_graph_node
 
-    policy.add_node(&graph.nodes[0].state, &graph.nodes[0].belief_state, false);
+    policy.add_node(&graph.nodes[0].state, &graph.nodes[0].belief_state, 0, false);
 
     lifo.push((0, 0));
 
@@ -173,7 +173,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
         for child_id in children_ids {
             let child = &graph.nodes[child_id];
             let is_leaf = expected_costs_to_goals[child_id] == 0.0;
-            let child_policy_id = policy.add_node(&child.state, &graph.nodes[child_id].belief_state, is_leaf);
+            let child_policy_id = policy.add_node(&child.state, &graph.nodes[child_id].belief_state, child_id, is_leaf);
             policy.add_edge(policy_node_id, child_policy_id);
 
             //println!("add node, belief {:?}, cost: {:?}", &graph.belief_state(child_id), &expected_costs_to_goals[child_id]);

@@ -20,13 +20,17 @@ pub trait Graph<const N: usize> {
 	fn parents(&self, id: usize) ->Vec<usize>; // deprecated trait -> do not use
 }
 
+#[derive(Clone)]
 pub struct PolicyNode<const N: usize> {
 	pub state: [f64; N],
 	pub belief_state: Vec<f64>,
 	pub parent: Option<usize>,
 	pub children: Vec<usize>,
+	// used for refining policy
+	pub original_node_id: usize
 }
 
+#[derive(Clone)]
 pub struct Policy<const N: usize> {
 	pub nodes: Vec<PolicyNode<N>>,
 	pub leafs: Vec<usize>
@@ -34,14 +38,15 @@ pub struct Policy<const N: usize> {
 
 impl<const N: usize> Policy<N> {
 	#[allow(clippy::style)]
-	pub fn add_node(&mut self, state: &[f64; N], belief_state: &BeliefState, is_leaf: bool) -> usize {
+	pub fn add_node(&mut self, state: &[f64; N], belief_state: &BeliefState, original_id: usize, is_leaf: bool) -> usize {
 		let id = self.nodes.len();
 
 		self.nodes.push(PolicyNode{
 			state: *state,
 			belief_state: belief_state.clone(),
 			parent: None,
-			children: Vec::new()
+			children: Vec::new(),
+			original_node_id: original_id
 		});
 
 		if is_leaf {
@@ -73,6 +78,47 @@ impl<const N: usize> Policy<N> {
 
 		path.reverse();
 		path
+	}
+
+	pub fn decompose(&self) -> Vec<(BeliefState, Vec<usize>)> {
+		let mut pieces = Vec::<(BeliefState, Vec<usize>)>::new();
+		
+		let mut lifo = Vec::new();
+		lifo.push(0);
+
+		while !lifo.is_empty() {
+			let id = lifo.pop().unwrap();
+
+			let mut ids = vec![];
+
+			let mut current_id = id;
+			loop {
+				assert_eq!(self.nodes[id].belief_state, self.nodes[current_id].belief_state);
+
+				ids.push(current_id);
+
+				match self.nodes[current_id].children.len() {
+					0 => { break; } // final node
+					1 => { current_id = self.nodes[current_id].children[0] }, // simple forward
+					_ => { // branching
+						for &child_id in &self.nodes[current_id].children {
+							lifo.push(child_id);
+						}
+						break;
+					}
+
+				}
+			}
+
+			let piece: (BeliefState, Vec<usize>) = (
+				self.nodes[id].belief_state.clone(),
+				ids
+			);
+
+			pieces.push(piece);
+		}
+
+		pieces
 	}
 }
 
@@ -160,6 +206,18 @@ pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
 	true
 }
 
+pub fn compute_compatibility(belief_states: &[BeliefState], world_validities: &[WorldMask]) -> Vec<Vec<bool>> {
+	let mut compatibilities = vec![vec![false; world_validities.len()]; belief_states.len()];
+
+	for (belief_id, _) in belief_states.iter().enumerate() {
+		for (validity_id, _) in world_validities.iter().enumerate() {
+			compatibilities[belief_id][validity_id] = is_compatible(&belief_states[belief_id], &world_validities[validity_id]);
+		}
+	}
+
+	compatibilities
+}
+
 #[allow(clippy::style)]
 pub fn assert_belief_state_validity(belief_state: &BeliefState) {
 	assert!((belief_state.iter().fold(0.0, |s, p| p + s) - 1.0).abs() < 0.000001);
@@ -178,7 +236,9 @@ pub fn contains(wm1: &WorldMask, wm2: &WorldMask) -> bool {
 #[cfg(test)]
 mod tests {
 
-use super::*;
+use bitvec::vec;
+
+    use super::*;
 
 #[test]
 fn test_wm_contains() {
@@ -191,4 +251,40 @@ fn test_wm_contains() {
 	assert!(!contains(&bitvec![1,0], &bitvec![0,1]));
 	assert!(!contains(&bitvec![0,0], &bitvec![0,1]));
 }
+
+#[test]
+fn test_policy_decomposition() {
+	/*
+	  4   5
+	   \ /
+		1, 2, 3
+		|
+		0
+	*/
+	
+	let mut policy = Policy{nodes: vec![], leafs: vec![]};
+
+	policy.add_node(&[0.0, 0.0], &vec![0.5, 0.5], 0, false);
+
+	policy.add_node(&[0.0, 1.0], &vec![0.5, 0.5], 0, false); // 1
+	policy.add_node(&[0.0, 1.0], &vec![1.0, 0.0], 0, false); // 2
+	policy.add_node(&[0.0, 1.0], &vec![0.0, 1.0], 0, false); // 3
+
+	policy.add_node(&[-1.0, 2.0], &vec![1.0, 0.0], 0, false); // 4
+	policy.add_node(&[11.0, 2.0], &vec![0.0, 1.0], 0, false); // 5
+
+	policy.add_edge(0, 1);
+	policy.add_edge(1, 2);
+	policy.add_edge(1, 3);
+
+	policy.add_edge(2, 4);
+	policy.add_edge(3, 5);
+
+
+
+	let policy_pieces = policy.decompose();
+
+	assert_eq!(policy_pieces.len(), 3);
+}
+
 }

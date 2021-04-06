@@ -51,7 +51,6 @@ impl<const N: usize> SampleFuncs<N> for RRTDefaultSamplers<N> {
 pub struct ParentLink {
 	pub id: usize,
 	pub dist: f64,
-	//pub world_mask: Reachable<'a>,
 }
 
 pub struct RRTNode<const N: usize> {
