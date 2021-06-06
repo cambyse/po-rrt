@@ -17,9 +17,9 @@ pub type CostEvaluatorCallbackType = extern fn(from_raw: *const f64, usize, to_r
 pub type ObserverCallbackType = extern fn(from_raw: *const f64, usize, belief_state_raw: *const f64, usize,
 										  belief_ids_raw: *mut *mut *mut usize, *mut usize);
 
-#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct CPlanningProblem{
+	// input
 	low: (*mut f64, usize),
 	up: (*mut f64, usize),
 	n_worlds: usize,
@@ -29,13 +29,17 @@ pub struct CPlanningProblem{
 	cost_evaluator_callback: Option<CostEvaluatorCallbackType>,
 	observer_callback: Option<ObserverCallbackType>,
 	start_belief_state: (*mut f64, usize),
-	reachable_belief_states: (*mut *mut f64, usize)
+	reachable_belief_states: (*mut *mut f64, usize),
+	// output
+	paths: Vec<Vec<Vec<f64>>>,
+	paths_lengths: Vec<usize>
 }
 
 #[no_mangle]
-pub extern "C" fn new_planning_problem() -> *mut CPlanningProblem {
-    Box::into_raw(Box::new(
+pub extern "C" fn new_planning_problem() -> Box<CPlanningProblem> {
+    Box::new(
 		CPlanningProblem{
+			// input
 			low: (ptr::null_mut(), 0),
 			up: (ptr::null_mut(), 0),
 			n_worlds: 0,
@@ -45,10 +49,16 @@ pub extern "C" fn new_planning_problem() -> *mut CPlanningProblem {
 			cost_evaluator_callback: None,
 			observer_callback: None,
 			start_belief_state: (ptr::null_mut(), 0),
-			reachable_belief_states: (ptr::null_mut(), 0)
+			reachable_belief_states: (ptr::null_mut(), 0),
+			// output
+			paths: Vec::new(),
+			paths_lengths: Vec::new()
 		}
-	))
+	)
 }
+
+#[no_mangle]
+pub extern "C" fn delete_planning_problem(_: Option<Box<CPlanningProblem>>) {}
 
 #[no_mangle]
 pub extern "C" fn set_lower_sampling_bound(planning_problem: *mut CPlanningProblem, low_raw: *mut f64, low_size: usize) {
@@ -116,7 +126,7 @@ pub extern "C" fn set_start_belief_state(planning_problem: *mut CPlanningProblem
 }
 
 #[no_mangle]
-pub extern "C" fn plan(planning_problem: *const CPlanningProblem, start_raw: *mut f64, start_size : usize,  goal_c: extern fn(*const f64, usize, *mut bool, usize)) {
+pub extern "C" fn plan(planning_problem: *mut CPlanningProblem, start_raw: *mut f64, start_size : usize,  goal_c: extern fn(*const f64, usize, *mut bool, usize)) {
     unsafe {
 		let fns = PRMFuncsAdapter::<2>::new(planning_problem);
 		let start : [f64; 2] = Vec::from_raw_parts(start_raw, start_size, start_size).try_into().unwrap();
@@ -141,12 +151,30 @@ pub extern "C" fn plan(planning_problem: *const CPlanningProblem, start_raw: *mu
 
 		prm.grow_graph(&start, goal, 0.1, 5.0, 1000, 5000).expect("graph not grown up to solution");
 		prm.print_summary();
-		let _policy = prm.plan_belief_space(&fns.start_belief_state);
+		let policy = prm.plan_belief_space(&fns.start_belief_state);
 
-		println!("number of nodes in policy:{}",_policy.nodes.len());
+		save_paths(planning_problem, &policy);
+
+		println!("number of nodes in policy:{}",policy.nodes.len());
 	}
-
 }
+
+#[no_mangle]
+pub extern "C" fn get_paths_info(planning_problem: *mut CPlanningProblem, number_of_paths: *mut usize, path_lengths: *mut *mut usize) {
+	unsafe {
+		*number_of_paths = (*planning_problem).paths.len();
+		*path_lengths = (*planning_problem).paths_lengths.as_mut_ptr() as *mut usize;
+	}
+}
+
+#[no_mangle]
+pub extern "C" fn get_paths_variable(planning_problem: *mut CPlanningProblem, path_id: usize, state_id: usize, c_state: *mut *mut f64, state_size: *mut usize) {
+	unsafe {
+		(*c_state) = (*planning_problem).paths[path_id][state_id].as_mut_ptr();
+		(*state_size) = (*planning_problem).paths[path_id][state_id].len();
+	}
+}
+
 
 pub struct PRMFuncsAdapter<const N: usize> {
 	planning_problem: *const CPlanningProblem,
@@ -222,7 +250,6 @@ impl<const N: usize> PRMFuncsAdapter<N> {
 			start_belief_state
 		}
 	}
-
 }
 
 impl<const N: usize> PRMFuncs<N> for PRMFuncsAdapter<N> {
@@ -279,5 +306,39 @@ impl<const N: usize> PRMFuncs<N> for PRMFuncsAdapter<N> {
 		}
 
 		successors
+	}
+}
+
+pub fn save_paths<const N: usize>(planning_problem: *mut CPlanningProblem, policy: &Policy<N>) {
+	let mut paths: Vec<Vec<Vec<f64>>> = Vec::new();
+	let mut paths_lengths: Vec<usize> = Vec::new();
+
+	for &leaf_id in &policy.leafs {
+		let mut path : Vec<Vec<f64>> = Vec::new();
+		let mut current_id = leaf_id;
+		let mut current = &policy.nodes[current_id];
+
+		path.push(current.state.try_into().unwrap());
+
+		while current.parent.is_some() {			
+			current_id = current.parent.unwrap();
+			current = &policy.nodes[current_id];
+
+			path.push(current.state.try_into().unwrap());
+		}
+
+		path.reverse();
+
+		for p in &path{
+			println!("state: {:?}, adress of state:{:?}", p, p.as_ptr());
+		}
+
+		paths_lengths.push(path.len());
+		paths.push(path);
+	}
+
+	unsafe{
+		(*planning_problem).paths = paths;
+		(*planning_problem).paths_lengths = paths_lengths;
 	}
 }
