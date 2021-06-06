@@ -2,6 +2,7 @@ use itertools::izip;
 use std::{iter::Zip, slice::Iter, iter::Iterator};
 use bitvec::prelude::*;
 use std::cmp::Ordering;
+use queues::*;
 
 use crate::belief_graph;
 
@@ -80,16 +81,19 @@ impl<const N: usize> Policy<N> {
 		path
 	}
 
-	pub fn decompose(&self) -> Vec<(BeliefState, Vec<usize>)> {
+	pub fn decompose(&self) -> (Vec<(BeliefState, Vec<usize>)>, Vec<Vec<usize>>) {
 		let mut pieces = Vec::<(BeliefState, Vec<usize>)>::new();
-		
-		let mut lifo = Vec::new();
-		lifo.push(0);
+		let mut skeleton = Vec::<Vec<usize>>::new();
 
-		while !lifo.is_empty() {
-			let id = lifo.pop().unwrap();
+		let mut n_pieces = 0;
+		let mut fifo: Queue<usize> = queue![];
+		fifo.add(0).unwrap();
+
+		while fifo.size() > 0 {
+			let id = fifo.remove().unwrap();
 
 			let mut ids = vec![];
+			let mut successors = vec![];
 
 			let mut current_id = id;
 			loop {
@@ -102,11 +106,12 @@ impl<const N: usize> Policy<N> {
 					1 => { current_id = self.nodes[current_id].children[0] }, // simple forward
 					_ => { // branching
 						for &child_id in &self.nodes[current_id].children {
-							lifo.push(child_id);
+							fifo.add(child_id).unwrap();
+							n_pieces += 1;
+							successors.push(n_pieces);
 						}
 						break;
 					}
-
 				}
 			}
 
@@ -116,9 +121,10 @@ impl<const N: usize> Policy<N> {
 			);
 
 			pieces.push(piece);
+			skeleton.push(successors);
 		}
 
-		pieces
+		(pieces, skeleton)
 	}
 }
 
@@ -282,7 +288,7 @@ fn test_policy_decomposition() {
 
 
 
-	let policy_pieces = policy.decompose();
+	let (policy_pieces, _) = policy.decompose();
 
 	assert_eq!(policy_pieces.len(), 3);
 }

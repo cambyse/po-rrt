@@ -38,3 +38,6 @@ harness = false
 [[bench]]
 name = "box_vs_copy"
 harness = false
+
+[lib]
+crate-type = ["rlib", "dylib"]

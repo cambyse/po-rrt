@@ -106,6 +106,11 @@ impl Map {
 	}
 
 	// zones specific
+	pub fn init_without_zones(&mut self) {
+		self.n_worlds = 1;
+		self.world_validities.push(bitvec![1; self.n_worlds]);
+	}
+
 	pub fn add_zones(&mut self, filepath : &str, visibility_distance: f64) {
 		self.zones = Some(Self::open_image(filepath));
 

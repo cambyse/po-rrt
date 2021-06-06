@@ -58,7 +58,7 @@ impl<'a, const N: usize> RefinmentTree<N> {
 	}
 }
 
-struct PRMPolicyRefiner <'a, F: PRMFuncs<N>, const N: usize> {
+pub struct PRMPolicyRefiner <'a, F: PRMFuncs<N>, const N: usize> {
 	pub policy: &'a Policy<N>,
 	pub fns: &'a F,
 	pub belief_graph: &'a BeliefGraph<N>,
@@ -84,7 +84,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		// option 1
 		println!("refine policy..");
 
-		let path_pieces = self.policy.decompose();
+		let (path_pieces, skeleton) = self.policy.decompose();
 		let mut trees = vec![];
 		let mut kdtrees = vec![];
 
@@ -97,7 +97,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			kdtrees.push(kdtree);
 		}
 
-		let policy = self.recompose(&trees);
+		let policy = self.recompose(&trees, &skeleton);
 		println!("success!");
 
 		(policy, trees)
@@ -218,7 +218,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		}	
 	}
 
-	fn recompose(&self, trees: &Vec<RefinmentTree<N>>) -> Policy<N> {
+	fn recompose(&self, trees: &Vec<RefinmentTree<N>>, _skeleton: &Vec<Vec<usize>>) -> Policy<N> {
 		// TODO: correct branching
 		let mut policy = Policy {
 			nodes: vec![],

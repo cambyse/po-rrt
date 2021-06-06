@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_imports)]
 #![feature(slice_group_by)]
+#![feature(vec_into_raw_parts)]
 
 pub mod common;
 pub mod sample_space;
@@ -12,3 +13,4 @@ pub mod prm_reachability;
 pub mod belief_graph;
 pub mod qmdp_policy_extractor;
 pub mod prm_policy_refiner;
+pub mod prm_c;
