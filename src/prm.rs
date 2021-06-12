@@ -58,9 +58,8 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			i+=1;
 	
 			// First sample state and world
-			let mut new_state = self.continuous_sampler.sample();
-			let world = self.discrete_sampler.sample(self.n_worlds);
-
+			let (world, mut new_state) = self.sample(); 
+			
 			// Second, retrieve closest node for sampled world and steer from there
 			let kd_from = self.kdtree.nearest_neighbor_filtered(new_state, |id|{
 				let r = self.conservative_reachability.reachability(id);
@@ -130,6 +129,13 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			},
 			_ => Err(&"final nodes are not reached for each world")
 		}
+	}
+
+	pub fn sample(&mut self) -> (usize, [f64; N]) {
+		let world = self.discrete_sampler.sample(self.n_worlds);
+		let new_state = self.continuous_sampler.sample();
+
+		return (world, new_state)
 	}
 
 	#[allow(clippy::style)]
@@ -268,7 +274,7 @@ mod tests {
 
 use crate::belief_graph;
 
-    use super::*;
+use super::*;
 
 #[test]
 fn test_plan_on_map2_pomdp() {
@@ -409,22 +415,22 @@ fn test_build_belief_graph() {
 						   &m);
 	// mock graph growth
 	prm.n_worlds = 2;
-	prm.graph.validities = vec![bitvec![0, 1], bitvec![1, 0], bitvec![1, 1]];
+	prm.graph.validities = vec![bitvec![0, 1], bitvec![1, 1]];
 
-	prm.graph.add_node([0.55, -0.8], 2); // 0
-	prm.graph.add_node([-0.42, -0.38], 2); // 1
-	prm.graph.add_node([0.54, 0.0], 2);   // 2
+	prm.graph.add_node([0.55, -0.8], 1); // 0
+	prm.graph.add_node([-0.42, -0.38], 1); // 1
+	prm.graph.add_node([0.54, 0.0], 1);   // 2
 	prm.graph.add_node([0.54, 0.1], 0);   // 3
-	prm.graph.add_node([-0.97, 0.65], 2); // 4
-	prm.graph.add_node([0.55, 0.9], 2);   // 5
+	prm.graph.add_node([-0.97, 0.65], 1); // 4
+	prm.graph.add_node([0.55, 0.9], 1);   // 5
 
-	prm.graph.add_bi_edge(0, 1, 2);
-	prm.graph.add_bi_edge(1, 2, 2);
+	prm.graph.add_bi_edge(0, 1, 1);
+	prm.graph.add_bi_edge(1, 2, 1);
 	prm.graph.add_bi_edge(2, 3, 0);
 	prm.graph.add_bi_edge(3, 5, 0);
 
-	prm.graph.add_bi_edge(1, 4, 2);
-	prm.graph.add_bi_edge(4, 5, 2);
+	prm.graph.add_bi_edge(1, 4, 1);
+	prm.graph.add_bi_edge(4, 5, 1);
 
 	prm.final_node_ids.push(5);
 	//

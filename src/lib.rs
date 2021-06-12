@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_imports)]
 #![feature(slice_group_by)]
 #![feature(vec_into_raw_parts)]
+#![feature(let_chains)]
 
 pub mod common;
 pub mod sample_space;
