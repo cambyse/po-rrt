@@ -24,7 +24,7 @@ pub struct SerializablePRMNode {
 	pub state: Vec<f64>,
 	pub validity_id: usize,
 	pub parents: Vec<SerializablePRMEdge>,
-	pub children: Vec<SerializablePRMEdge>,
+	pub children: Vec<SerializablePRMEdge>
 }
 
 #[derive(Serialize, Deserialize)]

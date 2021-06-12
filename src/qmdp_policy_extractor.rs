@@ -138,9 +138,7 @@ fn test_plan_on_map2_qmdp() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm", 0.1);
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
-	}
+	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
@@ -177,12 +175,16 @@ fn test_plan_on_map1_2_goals() {
 	let mut m = Map::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		let mut finality = bitvec![0;2];
-		finality.set(0, (state[0] - 0.68).abs() < 0.05 && (state[1] + 0.45).abs() < 0.05);
-		finality.set(1, (state[0] - 0.68).abs() < 0.05 && (state[1] - 0.38).abs() < 0.05);
-		finality
-	}
+	//fn goal(state: &[f64; 2]) -> WorldMask {
+	//	let mut finality = bitvec![0;2];
+	//	finality.set(0, (state[0] - 0.68).abs() < 0.05 && (state[1] + 0.45).abs() < 0.05);
+	//	finality.set(1, (state[0] - 0.68).abs() < 0.05 && (state[1] - 0.38).abs() < 0.05);
+	//	finality
+	//}
+
+	let goal = SquareGoal::new(vec![([0.68, 0.45], bitvec![1, 0]),
+									([0.68, 0.38], bitvec![0, 1])], 0.05);
+
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
@@ -222,9 +224,11 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm", 0.1);
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
-	}
+	//fn goal(state: &[f64; 2]) -> WorldMask {
+	//	bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
+	//}
+
+	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),

@@ -9,6 +9,7 @@ use crate::prm_reachability::*;
 use crate::belief_graph::*;
 use bitvec::prelude::*;
 
+
 pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	continuous_sampler: ContinuousSampler<N>,
 	discrete_sampler: DiscreteSampler,
@@ -43,7 +44,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   expected_costs_to_goals: Vec::new() }
 	}
 
-	pub fn grow_graph(&mut self, &start: &[f64; N], goal: impl Fn(&[f64; N]) -> WorldMask,
+	pub fn grow_graph(&mut self, &start: &[f64; N], goal: impl GoalFuncs<N>,
 				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<(), &'static str> {
 
 		println!("grow graph..");
@@ -110,9 +111,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					self.graph.add_edge(new_node_id, id, validity_id);
 				}
 
-				let finality = goal(&new_state);
-				let is_final = finality.iter().any(|w|{*w});
-				if is_final {
+				//let finality = goal.goal(&new_state);
+				//let is_final = finality.iter().any(|w|{*w});
+				if let Some(finality) = goal.goal(&new_state) {
 					self.conservative_reachability.add_final_node(new_node_id, finality);
 				}
 
@@ -281,9 +282,11 @@ fn test_plan_on_map2_pomdp() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm", 0.2);
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
-	}
+//	fn goal(state: &[f64; 2]) -> WorldMask {
+//		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
+//	}
+
+	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
@@ -306,9 +309,11 @@ fn test_plan_on_map4_pomdp() {
 	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map4_zone_ids.pgm", 0.15);
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
-	}
+	//fn goal(state: &[f64; 2]) -> WorldMask {
+	//	bitvec![if (state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
+	//}
+
+	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 16])], 0.05);
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
@@ -331,9 +336,11 @@ fn test_plan_on_map1_fov_pomdp() {
 	let mut m = Map::open("data/map1_fov.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_fov_zone_ids.pgm", 1.5);
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] - 0.85).abs() < 0.05 && (state[1] - 0.37).abs() < 0.05 { 1 } else { 0 }; 2]
-	}
+	//fn goal(state: &[f64; 2]) -> WorldMask {
+	//	bitvec![if (state[0] - 0.85).abs() < 0.05 && (state[1] - 0.37).abs() < 0.05 { 1 } else { 0 }; 2]
+	//}
+
+	let goal = SquareGoal::new(vec![([0.85, 0.37], bitvec![1; 2])], 0.05);
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
@@ -356,9 +363,12 @@ fn test_plan_on_map2_fov_pomdp() {
 	let mut m = Map::open("data/map2_fov.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_fov_zone_ids.pgm", 1.1);
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] - 0.775).abs() < 0.05 && (state[1] - 0.3).abs() < 0.05 { 1 } else { 0 }; 4]
-	}
+	//fn goal(state: &[f64; 2]) -> WorldMask {
+	//	bitvec![if (state[0] - 0.775).abs() < 0.05 && (state[1] - 0.3).abs() < 0.05 { 1 } else { 0 }; 4]
+	//}
+
+	let goal = SquareGoal::new(vec![([0.775, 0.4], bitvec![1; 4])], 0.05);
+
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
@@ -381,9 +391,12 @@ fn test_plan_on_map0() {
 	let mut m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.init_without_zones();
 
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![ if (state[0] - 0.5).abs() < 0.05 && (state[1] - 0.35).abs() < 0.05 { 1 } else { 0 }; 1]
-	}	
+	//fn goal(state: &[f64; 2]) -> WorldMask {
+	//	bitvec![ if (state[0] - 0.5).abs() < 0.05 && (state[1] - 0.35).abs() < 0.05 { 1 } else { 0 }; 1]
+	//}	
+
+	let goal = SquareGoal::new(vec![([0.5, 0.35], bitvec![1; 1])], 0.05);
+
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
@@ -405,10 +418,6 @@ fn test_plan_on_map0() {
 fn test_build_belief_graph() {
 	let mut m = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_zone_ids.pgm", 0.1);
-
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
-	}
 
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),

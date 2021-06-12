@@ -239,12 +239,83 @@ pub fn contains(wm1: &WorldMask, wm2: &WorldMask) -> bool {
 	true
 }
 
+
+pub trait GoalFuncs<const N: usize> {
+	fn goal(&self, _: &[f64; N]) -> Option<WorldMask> {
+		None
+	}
+
+	fn goal_example(&self, _:usize) -> [f64;N] {
+		[0.0; N]
+	}
+}
+
+pub struct SquareGoal<const N: usize> {
+	goal_to_validity: Vec<([f64;N], WorldMask)>,
+	world_to_goal: Vec<[f64; N]>,
+	max_dist : f64,
+}
+
+impl<const N: usize> SquareGoal<N> {
+	pub fn new(goal_to_validity: Vec<([f64;N], WorldMask)>, max_dist: f64) -> Self {
+		let n_worlds = goal_to_validity.first().expect("should have at least one element").1.len();
+		let mut world_to_goal: Vec<[f64; N]> = vec![[0.0; N]; n_worlds];
+
+		let mut world_has_goal = vec![false; n_worlds];
+		for world in 0..n_worlds {
+			for (goal, validity) in &goal_to_validity {
+				if validity[world] {
+
+					assert!(!world_has_goal[world]); // validities shouldn't overlap
+					
+					world_to_goal[world] = goal.clone();
+					world_has_goal[world] = true;
+				}
+			}
+		}
+
+		Self{
+			goal_to_validity: goal_to_validity.clone(),
+			world_to_goal,
+			max_dist
+		}
+	}
+}
+
+impl<const N: usize> GoalFuncs<N> for SquareGoal<N> {
+	fn goal(&self, state: &[f64; N]) -> Option<WorldMask> {
+		for (goal, validity)  in &self.goal_to_validity {
+			if norm1(state, goal) < self.max_dist {
+				return Some(validity.clone());
+			}
+		}
+
+		None
+	}
+
+	fn goal_example(&self, world:usize) -> [f64; N] {
+		self.world_to_goal[world]
+	}
+}
+
 #[cfg(test)]
 mod tests {
 
 use bitvec::vec;
 
-    use super::*;
+use super::*;
+
+#[test]
+fn test_goal() {
+	let goal = SquareGoal::new(vec![ ([0.1, 0.1], bitvec![1, 0]), ([0.9, 0.9], bitvec![0, 1]) ], 0.1);
+
+	assert_eq!(goal.goal(&[0.11, 0.11]).unwrap(), bitvec![1, 0]);
+	assert_eq!(goal.goal(&[0.5, 0.5]), None);
+	assert_eq!(goal.goal(&[0.91, 0.91]).unwrap(), bitvec![0, 1]);
+
+	assert_eq!(goal.goal_example(0), [0.1, 0.1]);
+	assert_eq!(goal.goal_example(1), [0.9, 0.9]);
+}
 
 #[test]
 fn test_wm_contains() {

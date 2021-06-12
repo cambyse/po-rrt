@@ -16,6 +16,7 @@ pub type TransitionValidityCallbackType = extern fn(from_raw: *const f64, usize,
 pub type CostEvaluatorCallbackType = extern fn(from_raw: *const f64, usize, to_raw: *const f64, usize) -> f64;
 pub type ObserverCallbackType = extern fn(from_raw: *const f64, usize, belief_state_raw: *const f64, usize,
 										  belief_ids_raw: *mut *mut *mut usize, *mut usize);
+pub type GoalCallbackType = extern fn(*const f64, usize, *mut bool, usize);
 
 //////////////////////////////////////////////////
 ////////   CPlanningProblem
@@ -34,6 +35,8 @@ pub struct CPlanningProblem{
 	observer_callback: Option<ObserverCallbackType>,
 	start_belief_state: (*mut f64, usize),
 	reachable_belief_states: (*mut *mut f64, usize),
+	// goal
+	goal_callback: Option<GoalCallbackType>,
 	// output
 	paths: Vec<Vec<Vec<f64>>>,
 	paths_lengths: Vec<usize>
@@ -55,6 +58,8 @@ pub extern "C" fn new_planning_problem() -> Box<CPlanningProblem> {
 			observer_callback: None,
 			start_belief_state: (ptr::null_mut(), 0),
 			reachable_belief_states: (ptr::null_mut(), 0),
+			// goal
+			goal_callback: None,
 			// output
 			paths: Vec::new(),
 			paths_lengths: Vec::new()
@@ -137,10 +142,20 @@ pub extern "C" fn set_start_belief_state(planning_problem: *mut CPlanningProblem
 	}
 }
 
+#[no_mangle]
+pub extern "C" fn set_goal_callback(planning_problem: *mut CPlanningProblem, callback: GoalCallbackType) {
+	unsafe {
+		(*planning_problem).goal_callback = Some(callback);
+	}
+}
+
 macro_rules! plan_inner {
     ($N:expr, $planning_problem:expr, $start:expr, $goal_generic:expr) => {
 		let fns = PRMFuncsAdapter::<$N>::new($planning_problem);
-		let goal = |state: &[f64; $N]| -> WorldMask {$goal_generic(state.as_ptr(), state.len())};
+
+		let goal = GoalAdapter::<$N>::new($planning_problem);
+
+		//let goal = |state: &[f64; $N]| -> WorldMask {$goal_generic(state.as_ptr(), state.len())};
 		let mut prm = PRM::new(ContinuousSampler::new(fns.low, fns.up), DiscreteSampler::new(), &fns);
 		prm.grow_graph(&$start.try_into().unwrap(), goal, 0.2, 5.0, 1000, 10000).expect("graph not grown up to solution");
 		prm.print_summary();
@@ -352,5 +367,39 @@ impl<const N: usize> PRMFuncs<N> for PRMFuncsAdapter<N> {
 		}
 
 		successors
+	}
+}
+
+//////////////////////////////////////////////////
+////////   GoalAdapter
+//////////////////////////////////////////////////
+
+struct GoalAdapter<const N: usize> {
+	planning_problem: *const CPlanningProblem,
+}
+
+impl<const N: usize> GoalAdapter<N> {
+	pub fn new(planning_problem: *const CPlanningProblem) -> Self{
+		Self{
+			planning_problem
+		}
+	}
+}
+
+impl<const N: usize> GoalFuncs<N> for GoalAdapter<N> {
+	fn goal(&self, state: &[f64; N]) -> Option<WorldMask> {
+		unsafe {
+			let mut validity = vec![false; (*self.planning_problem).n_worlds];
+			let mut validity_bit_vec = bitvec![0; (*self.planning_problem).n_worlds];
+				(*self.planning_problem).goal_callback.unwrap()(state.as_ptr(), state.len(), validity.as_mut_ptr(), validity.len());
+				for i in 0..(*self.planning_problem).n_worlds { // keep bitvec??
+					validity_bit_vec.set(i, validity[i]);
+				}
+				Some(validity_bit_vec)
+		}
+	}
+
+	fn goal_example(&self, world: usize) -> [f64;N] {
+		[0.0; N]
 	}
 }
