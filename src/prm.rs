@@ -44,7 +44,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   expected_costs_to_goals: Vec::new() }
 	}
 
-	pub fn grow_graph(&mut self, &start: &[f64; N], goal: impl GoalFuncs<N>,
+	pub fn grow_graph(&mut self, &start: &[f64; N], goal: &impl GoalFuncs<N>,
 				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<(), &'static str> {
 
 		println!("grow graph..");
@@ -59,7 +59,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			i+=1;
 	
 			// First sample state and world
-			let (world, mut new_state) = self.sample(); 
+			let (world, mut new_state) = self.sample(goal, i); 
 			
 			// Second, retrieve closest node for sampled world and steer from there
 			let kd_from = self.kdtree.nearest_neighbor_filtered(new_state, |id|{
@@ -132,11 +132,14 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 	}
 
-	pub fn sample(&mut self) -> (usize, [f64; N]) {
+	pub fn sample(&mut self, goal: &impl GoalFuncs<N>, iteration: usize) -> (usize, [f64; N]) {
 		let world = self.discrete_sampler.sample(self.n_worlds);
-		let new_state = self.continuous_sampler.sample();
+		let new_state = match iteration % 100 {
+			0 => goal.goal_example(world),
+			_ => self.continuous_sampler.sample()
+		};
 
-		return (world, new_state)
+		(world, new_state)
 	}
 
 	#[allow(clippy::style)]
@@ -282,17 +285,12 @@ fn test_plan_on_map2_pomdp() {
 	let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map2_zone_ids.pgm", 0.2);
 
-//	fn goal(state: &[f64; 2]) -> WorldMask {
-//		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
-//	}
-
 	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
-
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
@@ -309,17 +307,12 @@ fn test_plan_on_map4_pomdp() {
 	let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map4_zone_ids.pgm", 0.15);
 
-	//fn goal(state: &[f64; 2]) -> WorldMask {
-	//	bitvec![if (state[0] + 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 16]
-	//}
-
-	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 16])], 0.05);
-
+	let goal = SquareGoal::new(vec![([-0.55, 0.9], bitvec![1; 16])], 0.05);
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, 1000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], &goal, 0.05, 5.0, 10500, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space( &vec![1.0/16.0; 16]);
 
@@ -336,17 +329,12 @@ fn test_plan_on_map1_fov_pomdp() {
 	let mut m = Map::open("data/map1_fov.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_fov_zone_ids.pgm", 1.5);
 
-	//fn goal(state: &[f64; 2]) -> WorldMask {
-	//	bitvec![if (state[0] - 0.85).abs() < 0.05 && (state[1] - 0.37).abs() < 0.05 { 1 } else { 0 }; 2]
-	//}
-
 	let goal = SquareGoal::new(vec![([0.85, 0.37], bitvec![1; 2])], 0.05);
-
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[-0.37, 0.37], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[-0.37, 0.37], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![0.5, 0.5]);
 
@@ -374,7 +362,7 @@ fn test_plan_on_map2_fov_pomdp() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.35, -0.125], goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.35, -0.125], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![0.25, 0.25, 0.25, 0.25]);
 
@@ -402,7 +390,7 @@ fn test_plan_on_map0() {
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 500, 10000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 500, 10000).expect("graph not grown up to solution");
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![1.0]);
 

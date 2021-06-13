@@ -281,13 +281,13 @@ mod tests {
 		let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 		m.add_zones("data/map2_zone_ids.pgm", 0.2);
 
-		let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1, 4])], 0.05);
+		let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
 		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 							DiscreteSampler::new(),
 							&m);
 
-		prm.grow_graph(&[0.55, -0.8], goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
+		prm.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 

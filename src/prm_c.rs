@@ -9,6 +9,7 @@ use ptr::{null, null_mut};
 use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::ptr;
+use std::usize;
 
 
 pub type StateValidityCallbackType = extern fn(*const f64, usize) -> i64;
@@ -17,6 +18,7 @@ pub type CostEvaluatorCallbackType = extern fn(from_raw: *const f64, usize, to_r
 pub type ObserverCallbackType = extern fn(from_raw: *const f64, usize, belief_state_raw: *const f64, usize,
 										  belief_ids_raw: *mut *mut *mut usize, *mut usize);
 pub type GoalCallbackType = extern fn(*const f64, usize, *mut bool, usize);
+pub type GoalExampleCallbackType = extern fn(usize, *mut f64, usize);
 
 //////////////////////////////////////////////////
 ////////   CPlanningProblem
@@ -37,6 +39,7 @@ pub struct CPlanningProblem{
 	reachable_belief_states: (*mut *mut f64, usize),
 	// goal
 	goal_callback: Option<GoalCallbackType>,
+	goal_example_callback: Option<GoalExampleCallbackType>,
 	// output
 	paths: Vec<Vec<Vec<f64>>>,
 	paths_lengths: Vec<usize>
@@ -60,6 +63,7 @@ pub extern "C" fn new_planning_problem() -> Box<CPlanningProblem> {
 			reachable_belief_states: (ptr::null_mut(), 0),
 			// goal
 			goal_callback: None,
+			goal_example_callback: None,
 			// output
 			paths: Vec::new(),
 			paths_lengths: Vec::new()
@@ -149,15 +153,19 @@ pub extern "C" fn set_goal_callback(planning_problem: *mut CPlanningProblem, cal
 	}
 }
 
+#[no_mangle]
+pub extern "C" fn set_goal_example_callback(planning_problem: *mut CPlanningProblem, callback: GoalExampleCallbackType) {
+	unsafe {
+		(*planning_problem).goal_example_callback = Some(callback);
+	}
+}
+
 macro_rules! plan_inner {
-    ($N:expr, $planning_problem:expr, $start:expr, $goal_generic:expr) => {
+    ($N:expr, $planning_problem:expr, $start:expr) => {
 		let fns = PRMFuncsAdapter::<$N>::new($planning_problem);
-
 		let goal = GoalAdapter::<$N>::new($planning_problem);
-
-		//let goal = |state: &[f64; $N]| -> WorldMask {$goal_generic(state.as_ptr(), state.len())};
 		let mut prm = PRM::new(ContinuousSampler::new(fns.low, fns.up), DiscreteSampler::new(), &fns);
-		prm.grow_graph(&$start.try_into().unwrap(), goal, 0.2, 5.0, 1000, 10000).expect("graph not grown up to solution");
+		prm.grow_graph(&$start.try_into().unwrap(), &goal, 0.2, 5.0, 1000, 10000).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
 		save_paths($planning_problem, &policy);
@@ -165,30 +173,16 @@ macro_rules! plan_inner {
 }
 
 #[no_mangle]
-pub extern "C" fn plan(planning_problem: *mut CPlanningProblem, start_raw: *mut f64, start_size : usize,  goal_c: extern fn(*const f64, usize, *mut bool, usize)) {
+pub extern "C" fn plan(planning_problem: *mut CPlanningProblem, start_raw: *mut f64, start_size : usize) {
     unsafe {
 		assert_eq!(start_size, (*planning_problem).state_dim);
 
 		let start: Vec<f64> = Vec::from_raw_parts(start_raw, start_size, start_size).try_into().unwrap();
 
-		let goal_generic = |state_ptr: *const f64, state_size: usize| -> WorldMask {
-			let mut validity = vec![false; (*planning_problem).n_worlds];
-
-			goal_c(state_ptr, state_size, validity.as_mut_ptr(), validity.len());
-
-			let mut validity_bit_vec = bitvec![0; (*planning_problem).n_worlds];
-
-			for i in 0..(*planning_problem).n_worlds { // keep bitvec??
-				validity_bit_vec.set(i, validity[i]);
-			}
-
-			validity_bit_vec
-		};
-
 		match (*planning_problem).state_dim {
-			2 => {plan_inner!(2, planning_problem, start, goal_generic);}, 
-			3 => {plan_inner!(3, planning_problem, start, goal_generic);},
-			7 => {plan_inner!(7, planning_problem, start, goal_generic);},
+			2 => {plan_inner!(2, planning_problem, start);}, 
+			3 => {plan_inner!(3, planning_problem, start);},
+			7 => {plan_inner!(7, planning_problem, start);},
 			_ => panic!("case not yet handled!")
 		};
 	}
@@ -261,15 +255,13 @@ impl<const N: usize> PRMFuncsAdapter<N> {
 			assert!(N==(*planning_problem).up.1, "N:{}, up size:{}", N, (*planning_problem).up.1);
 		}
 
-		let mut low = [0.0; N];
-
+		let low: [f64; N];
 		unsafe {
 			let low_vec = Vec::from_raw_parts((*planning_problem).low.0, (*planning_problem).low.1, (*planning_problem).low.1);
 			low = low_vec.try_into().unwrap();
 		}
 
-		let mut up = [0.0; N];
-
+		let up: [f64; N];
 		unsafe {
 			let up_vec = Vec::from_raw_parts((*planning_problem).up.0, (*planning_problem).up.1, (*planning_problem).up.1);
 			up = up_vec.try_into().unwrap();
@@ -304,8 +296,7 @@ impl<const N: usize> PRMFuncsAdapter<N> {
 		}
 
 		// start belief state
-		let mut start_belief_state: Vec<f64> = Vec::new();
-
+		let start_belief_state: Vec<f64>;
 		unsafe {
 			start_belief_state = Vec::from_raw_parts((*planning_problem).start_belief_state.0, (*planning_problem).start_belief_state.1, (*planning_problem).start_belief_state.1);
 		}
@@ -400,6 +391,10 @@ impl<const N: usize> GoalFuncs<N> for GoalAdapter<N> {
 	}
 
 	fn goal_example(&self, world: usize) -> [f64;N] {
-		[0.0; N]
+		unsafe {
+			let mut state = [0.0; N];
+			(*self.planning_problem).goal_example_callback.unwrap()(world, state.as_mut_ptr(), state.len()); // unwrap at construction time?
+			state
+		}
 	}
 }

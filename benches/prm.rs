@@ -7,15 +7,12 @@ use bitvec::prelude::*;
 
 
 fn prm_map(m: &Map, min_iter: usize) {
-	fn goal(state: &[f64; 2]) -> WorldMask {
-		bitvec![if (state[0] - 0.55).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05 { 1 } else { 0 }; 4]
-	}
-
+	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   m);
 
-	prm.grow_graph(&[0.55, -0.8], goal, 0.05, 5.0, min_iter, 100000).unwrap();
+	prm.grow_graph(&[0.55, -0.8], &goal, 0.05, 5.0, min_iter, 100000).unwrap();
 	prm.plan_belief_space(&vec![0.25; 4]);
 }
 
