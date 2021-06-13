@@ -98,7 +98,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		}
 
 		let policy = self.recompose(&trees, &skeleton);
-		println!("success!");
+		println!("success! (number of nodes:{}, number of leafs:{})", policy.nodes.len(), policy.leafs.len());
 
 		(policy, trees)
 	}
@@ -234,7 +234,13 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 				node = tree.nodes[parent.id];
 				let belief_node = &self.belief_graph.nodes[node.belief_graph_id];
 				let id = policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
-				policy.add_edge(id -1, id);
+				policy.add_edge(id, id - 1);
+			}
+		}
+
+		for (i, node) in policy.nodes.iter().enumerate() {
+			if node.children.is_empty() {
+				policy.leafs.push(i);
 			}
 		}
 

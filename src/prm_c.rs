@@ -4,6 +4,7 @@ use crate::common::*;
 use crate ::prm_graph::*;
 use crate ::prm::*;
 use crate ::sample_space::*;
+use crate ::prm_policy_refiner::*;
 use bitvec::prelude::*;
 use ptr::{null, null_mut};
 use std::convert::TryInto;
@@ -165,9 +166,12 @@ macro_rules! plan_inner {
 		let fns = PRMFuncsAdapter::<$N>::new($planning_problem);
 		let goal = GoalAdapter::<$N>::new($planning_problem);
 		let mut prm = PRM::new(ContinuousSampler::new(fns.low, fns.up), DiscreteSampler::new(), &fns);
-		prm.grow_graph(&$start.try_into().unwrap(), &goal, 0.2, 5.0, 1000, 10000).expect("graph not grown up to solution");
+		prm.grow_graph(&$start.try_into().unwrap(), &goal, 0.1, 5.0, 1000, 10000).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
+		let (policy, _) = policy_refiner.refine_solution(0.3);
+
 		save_paths($planning_problem, &policy);
     };
 }
