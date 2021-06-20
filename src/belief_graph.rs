@@ -101,7 +101,7 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
                     let p = transition_probability(&graph.nodes[u_id].belief_state, &graph.nodes[vv_id].belief_state);
 
                     //println!("belief avant:{:?} apres:{:?}", graph.nodes[u_id].belief_state, graph.nodes[vv_id].belief_state);
-                    assert_eq!(u.children.len(), 2);
+                    //assert_eq!(u.children.len(), 2);
 
                     alternative += p * (cost_evaluator(&u.state, &vv.state) + dist[vv_id]);
                 }

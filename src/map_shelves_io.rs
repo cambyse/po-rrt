@@ -395,7 +395,7 @@ impl MapShelfDomain {
 		for from in &graph.nodes {
 			for to_edge in from.children.clone() {
 				let to  = &graph.nodes[to_edge.id];
-				self.draw_line(from.state, to.state, GRAY5, 0.3);
+				self.draw_line(from.state, to.state, GRAY5, 0.25);
 			}
 		}
 	}

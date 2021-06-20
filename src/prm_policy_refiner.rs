@@ -3,6 +3,7 @@ use itertools::{all, enumerate, izip, merge, zip};
 use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::map_io::*; // tests only
+use crate::map_shelves_io::*; // tests only
 use crate::prm_graph::*;
 use std::collections::HashSet;
 use crate::prm_reachability::*;
@@ -308,5 +309,36 @@ mod tests {
 		m2.draw_refinment_trees(&trees);
 		m2.draw_policy(&policy);
 		m2.save("results/test_prm_on_map2_pomdp_refined");
+	}
+
+	#[test]
+	fn test_plan_on_map1_3_goals() {
+		let mut m = MapShelfDomain::open("data/map1_3_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+		m.add_zones("data/map1_3_goals_zone_ids.pgm", 0.5);
+
+		let goal = SquareGoal::new(vec![([0.65, 0.14], bitvec![1, 0, 0]),
+										([0.0, 0.75], bitvec![0, 1, 0]),
+										([-0.7, 0.14], bitvec![0, 0, 1])],
+										0.05);
+
+		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+							DiscreteSampler::new(),
+							&m);
+
+		prm.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+		prm.print_summary();
+
+		let policy = prm.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
+
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let (policy, trees) = policy_refiner.refine_solution(0.3);
+
+		let mut m2 = m.clone();
+		m2.resize(5);
+		m2.draw_full_graph(&prm.graph);
+		m2.draw_zones_observability();
+		m2.draw_refinment_trees(&trees);
+		m2.draw_policy(&policy);
+		m2.save("results/test_plan_on_map1_3_goals_pomdp_refined");
 	}
 }
