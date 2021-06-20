@@ -1,5 +1,5 @@
 use itertools::{all, enumerate, izip, merge, zip};
-
+use std::{iter::Zip, slice::Iter, iter::Iterator};
 use crate::common::*;
 use bitvec::prelude::*;
 
@@ -64,6 +64,10 @@ impl Reachability {
 			}
 		}
 		final_node_ids
+	}
+
+	pub fn final_nodes_with_validities(&self) -> Zip<Iter<usize>, Iter<WorldMask>> {
+		self.final_node_ids.iter().zip(self.finality.iter())
 	}
 
 	pub fn is_final_set_complete(&self) -> bool {
@@ -202,6 +206,14 @@ fn test_final_nodes_completness_when_2_different_goals_for_2_different_worlds() 
 
 	assert_eq!(reachability.final_nodes_for_world(0), vec![2]);
 	assert_eq!(reachability.final_nodes_for_world(1), vec![3]);
+
+	let final_nodes_and_validities: Vec<(&usize, &WorldMask)> = reachability.final_nodes_with_validities().collect();
+	
+	assert_eq!(*final_nodes_and_validities[0].0, 2);
+	assert_eq!(*final_nodes_and_validities[0].1, bitvec![1,0]);
+
+	assert_eq!(*final_nodes_and_validities[1].0, 3);
+	assert_eq!(*final_nodes_and_validities[1].1, bitvec![0,1]);
 }
 
 }

@@ -58,27 +58,24 @@ use colors::*;
 #[derive(Debug, PartialEq)]
 pub enum Belief {
 	Free,
-	Obstacle,
-	Zone(usize),
+	Obstacle
 }
 
 #[derive(Clone)]
-pub struct Map {
+pub struct MapShelfDomain {
 	img: image::RgbImage,
 	low: [f64; 2],
 	//up: [f64; 2], // low + up are enough and make up redundant
 	ppm: f64,
 	zones: Option<image::GrayImage>,
 	n_zones: usize,
-	n_worlds: usize,
-	zones_to_worlds: Vec<WorldMask>,
 	world_validities: Vec<WorldMask>,
 	zone_positions: Vec<[f64;2]>,
 	visibility_distance: f64
 }
 
 // Given N zones, there are 2^N possible worlds
-impl Map {
+impl MapShelfDomain {
 	pub fn open(filepath : &str, low: [f64; 2], up: [f64; 2]) -> Self {
 		Self::build(Self::open_image(filepath), low, up)
 	}
@@ -87,12 +84,12 @@ impl Map {
 		self.img.save(format!("{}.png", filepath)).expect("Couldn't save image");
 	}
 
-	fn build(img: image::GrayImage, low: [f64; 2], up: [f64; 2])-> Map {
+	fn build(img: image::GrayImage, low: [f64; 2], up: [f64; 2])-> Self {
 		let ppm = (img.width() as f64) / (up[0] - low[0]);
 
 		let img = DynamicImage::ImageLuma8(img).to_rgb8();
 
-		Map{img, low, /*up,*/ ppm, zones: None, n_zones: 0, n_worlds: 0, zones_to_worlds: Vec::new(), world_validities: Vec::new(), zone_positions: Vec::new(), visibility_distance: 0.0}
+		Self{img, low, /*up,*/ ppm, zones: None, n_zones: 0, world_validities: Vec::new(), zone_positions: Vec::new(), visibility_distance: 0.0}
 	}
 
 	fn open_image(filepath : &str) -> image::GrayImage {
@@ -105,11 +102,6 @@ impl Map {
 	}
 
 	// zones specific
-	pub fn init_without_zones(&mut self) {
-		self.n_worlds = 1;
-		self.world_validities.push(bitvec![1; self.n_worlds]);
-	}
-
 	pub fn add_zones(&mut self, filepath : &str, visibility_distance: f64) {
 		self.zones = Some(Self::open_image(filepath));
 
@@ -117,14 +109,7 @@ impl Map {
 		self.init_zone_positions();
 		self.visibility_distance = visibility_distance;
 
-		// zone -> worlds
-		for i in 0..self.n_zones {
-			self.zones_to_worlds.push(self.zone_index_to_world_mask(i));
-		}
-
-		self.world_validities = self.zones_to_worlds.clone();
-		self.world_validities.push(bitvec![1; self.n_worlds]);
-		//println!("{:?}:", &self.zones_to_worlds);
+		self.world_validities.push(bitvec![1; self.n_zones]);
 	}
 
 	fn init_zone_ids(&mut self) {
@@ -141,7 +126,6 @@ impl Map {
 		}
 		
 		self.n_zones = max_id + 1;
-		self.n_worlds = (2_u32).pow(self.n_zones as u32) as usize;
 	}
 
     fn init_zone_positions(&mut self) {
@@ -167,9 +151,8 @@ impl Map {
 		let p = self.img.get_pixel(ij[1], ij[0]);
 
 		match p[0] {
-			255 => Belief::Free,
 			0 => Belief::Obstacle,
-			_ => Belief::Zone(self.get_zone_index(ij[0], ij[1]).unwrap())
+			_ => Belief::Free,
 		}
 	}
 
@@ -195,24 +178,6 @@ impl Map {
 		}
 	}
 
-	fn zone_index_to_world_mask(&self, zone_index: usize) -> WorldMask {
-		let mut world_mask = bitvec![1; self.n_worlds];
-		for world in 0..self.n_worlds {
-			if !self.get_zone_status(world, zone_index).expect("Call with a correct world id") {
-				world_mask.set(world, false);
-			}
-		}
-		world_mask
-	}
-
-	fn get_zone_status(&self, world: usize, zone_index: usize) -> Result<bool, ()> {
-		if zone_index < self.n_zones && world < self.n_worlds {
-			Ok(world & (1 << zone_index) != 0)
-		} else {
-			Err(())
-		}
-	}
-
 	fn get_traversed_space(&self, a: &[f64; 2], b: &[f64; 2]) -> Belief {
 		let mut traversed_space = Belief::Free;
 
@@ -225,14 +190,8 @@ impl Map {
 		for (i, j) in line_drawing::Bresenham::new(a, b) {
 			let pixel = self.img.get_pixel(j as u32, i as u32);
 			match pixel[0] {
-				255 => {},
 				0 => return Belief::Obstacle,
-				_ => {	
-					let zone_index = self.get_zone_index(i as u32, j as u32).unwrap();
-					if let Belief::Zone(previous) = traversed_space {
-						assert!(zone_index == previous, "multiple zone traversal not supported");
-					}				
-					traversed_space = Belief::Zone(zone_index);
+				_ => {
 				}
 			}
 		}
@@ -252,26 +211,25 @@ impl Map {
 			}
 		}
 
-		let mask = &self.zones_to_worlds[zone_id];
-
-		// assume closed
-		let mut belief_close = belief_state.to_owned();
-		for w in 0..mask.len() {
-			belief_close[w] = if mask[w] { 0.0 } else { belief_state[w] };
-		}
-		normalize(&mut belief_close);
-		if ! belief_close.iter().any(|&p| p.is_nan()) {
-			output_beliefs.push(belief_close);
+		// assume object there
+		let mut belief_there = belief_state.to_owned();
+		for w in 0..belief_there.len() {
+			belief_there[w] = if w == zone_id { belief_there[w] } else { 0.0 };
 		}
 
-		// assume open
-		let mut belief_open = belief_state.to_owned();
-		for w in 0..mask.len() {
-			belief_open[w] = if mask[w] { belief_state[w] } else { 0.0 };
+		normalize(&mut belief_there);
+		if ! belief_there.iter().any(|&p| p.is_nan()) {
+			output_beliefs.push(belief_there);
 		}
-		normalize(&mut belief_open);
-		if ! belief_open.iter().any(|&p| p.is_nan()) {
-			output_beliefs.push(belief_open);
+
+		// assume object not there
+		let mut belief_not_there = belief_state.to_owned();
+		for w in 0..belief_not_there.len() {
+			belief_not_there[w] = if w == zone_id { 0.0 } else { belief_state[w] };
+		}
+		normalize(&mut belief_not_there);
+		if ! belief_not_there.iter().any(|&p| p.is_nan()) {
+			output_beliefs.push(belief_not_there);
 		}
 
 		output_beliefs
@@ -447,7 +405,7 @@ impl Map {
 	}
 
 	pub fn draw_graph_for_world(&mut self, graph: &PRMGraph<2>, world:usize) {
-		if world > self.n_worlds {
+		if world > self.n_zones {
 			panic!("Invalid world id");
 		}
 
@@ -485,7 +443,7 @@ impl Map {
 				let z = self.get_zone_index(i, j);
 
 				if let Some(zone_id) = z {
-					let color = if self.zones_to_worlds[zone_id][world_id] { WHITE } else { BLACK };
+					let color = CYAN;
 					self.img.put_pixel(j, i, color);
 				}	
 			}
@@ -499,42 +457,13 @@ impl Map {
 	}
 } 
 
-impl RRTFuncs<2> for Map {
-	fn state_validator(&self, state: &[f64; 2]) -> Reachable {
-		match self.is_state_valid(state) {
-			Belief::Free => Reachable::Always,
-			Belief::Obstacle => Reachable::Never,
-			Belief::Zone(zone) => Reachable::Restricted(&self.zones_to_worlds[zone]),
-		}
-	}
-
-	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Reachable {
-		match self.get_traversed_space(a, b) {
-			Belief::Free => Reachable::Always,
-			Belief::Obstacle => Reachable::Never,
-			Belief::Zone(zone) => Reachable::Restricted(&self.zones_to_worlds[zone]),
-		}
-	}
-
-	fn observe_new_beliefs(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
-		let mut output_beliefs = self.observe_impl(state, belief_state);
-
-		if output_beliefs.len() > 1 && output_beliefs[0] == *belief_state {
-			output_beliefs.remove(0);
-		}
-
-		output_beliefs
-	}
-}
-
-impl PRMFuncs<2> for Map {
+impl PRMFuncs<2> for MapShelfDomain {
 	fn n_worlds(&self) -> usize {
-		self.n_worlds
+		self.n_zones
 	}
 
 	fn state_validity(&self, state: &[f64; 2]) -> Option<usize> {
 		match self.is_state_valid(state) {
-			Belief::Zone(zone_index) => {Some(zone_index)}, // TODO: improve readability
 			Belief::Free => {Some(self.world_validities.len() - 1)},
 			Belief::Obstacle => None
 		}
@@ -554,7 +483,6 @@ impl PRMFuncs<2> for Map {
 		let geometric_validitiy = self.get_traversed_space(&from.state, &to.state);
 
 		match geometric_validitiy {
-			Belief::Zone(zone_index) => {Some(zone_index)}, // TODO: improve readability
 			Belief::Free => {Some(self.world_validities.len() - 1)},
 			Belief::Obstacle => None
 		}
@@ -598,6 +526,7 @@ impl PRMFuncs<2> for Map {
 	}
 }
 
+
 #[cfg(test)]
 mod tests {
 
@@ -607,12 +536,12 @@ use std::path::Path;
 
 #[test]
 fn open_image() {
-	Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	MapShelfDomain::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
 }
 
 #[test]
 fn coordinate_conversion() {
-	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	let m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 
 	let xys = [[0.5, 0.3], [-0.5, 0.1], [-0.1, -0.4]];
 
@@ -629,211 +558,116 @@ fn coordinate_conversion() {
 
 #[test]
 fn test_valid_state() {
-	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	let m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	assert_eq!(m.is_state_valid(&[0.0, 0.0]), Belief::Free);
 }
 
 #[test]
 fn test_invalid_state() {
-	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	assert_eq!(m.is_state_valid(&[0.0, 0.6]), Belief::Obstacle);
+	let m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	assert_eq!(m.is_state_valid(&[0.9, 0.0]), Belief::Obstacle);
 }
 
-#[test]
-fn clone_draw_line_and_save_image() {
-	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	let mut m = m.clone();
-
-	m.draw_line([-0.5, -0.5], [0.5, 0.5], GRAY5, 1.0);
-	m.draw_path(&[[-0.3, -0.4], [0.0, 0.0] ,[0.4, 0.3]].to_vec(), GRAY5);
-
-	m.save("results/tmp");
-
-	assert!(Path::new("results/tmp.png").exists());
-	fs::remove_file("results/tmp.png").unwrap();
-}
-// MAP 1 zone
+// MAP 2 zone
 #[test]
 fn test_map_1_construction() {
-	let mut map = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map1_zone_ids.pgm", 0.1);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
-	assert_eq!(map.n_zones, 1);
-	assert_eq!(map.n_worlds, 2);
+	assert_eq!(map.n_zones, 2);
 }
 
 #[test]
 fn test_map_1_states() {
-	let mut map = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map1_zone_ids.pgm", 0.1);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
 	let world_validities = map.world_validities();
-
-	// zone status
-	assert_eq!(map.get_zone_status(0, 0).unwrap(), false);// world 0 corresponds to all variations invalid
-	assert_eq!(map.get_zone_status(1, 0).unwrap(), true); // world 1 corresponds to door with index 2^0 open
-
-	assert_eq!(map.get_zone_status(1, 1), Err(())); // zone id too high
-	assert_eq!(map.get_zone_status(2, 0), Err(())); // world number too high
 
 	// world validities
-	assert_eq!(map.state_validity(&[0.1, 0.12]), None); // obstacle
+	assert_eq!(map.state_validity(&[0.9, 0.0]), None); // obstacle
 	assert_eq!(world_validities[map.state_validity(&[0.0, 0.0]).unwrap()], bitvec![1, 1]); // free space
-	assert_eq!(world_validities[map.state_validity(&[0.57, 0.11]).unwrap()], bitvec![0, 1]); // on door
-}
-
-// MAP 2 zones
-#[test]
-fn test_map_2_construction() {
-	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm", 0.1);
-
-	assert_eq!(map.n_zones,2);
-	assert_eq!(map.n_worlds, 4);
-}
-
-#[test]
-fn test_map_2_states() {
-	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm", 0.1);
-	let world_validities = map.world_validities();
-
-	// world validity
-	assert_eq!(map.state_validity(&[0.1, 0.12]), None); // obstacle
-	assert_eq!(world_validities[map.state_validity(&[0.0, 0.0]).unwrap()], bitvec![1,1,1,1]); // free space
-
-	assert_eq!(world_validities[map.state_validity(&[0.51, -0.41]).unwrap()], bitvec![0,1,0,1]); // zone 0
-	assert_eq!(world_validities[map.state_validity(&[0.57, 0.09]).unwrap()], bitvec![0,0,1,1]); // zone 1
 }
 
 #[test]
 fn test_map_2_observation_model_in_zones() {
-	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
 	// regular belief state transitions
-	let posteriors = map.observe(&[0.54, -0.5], &vec![0.25; 4]);
-	assert_eq!(posteriors[0], vec![0.5, 0.0, 0.5, 0.0]); // zone 0 close
-	assert_eq!(posteriors[1], vec![0.0, 0.5, 0.0, 0.5]); // zone 0 open
-
-	// peculiar belief state transitions
-	let posteriors = map.observe(&[0.54, -0.5], &vec![1.0, 0.0, 0.0, 0.0]); // already in open belief state!
-	assert_eq!(posteriors, vec![vec![1.0, 0.0, 0.0, 0.0]]);
-
-	let posteriors = map.observe(&[0.54, -0.5], &vec![0.0, 1.0, 0.0, 0.0]); // already in close belief state!
-	assert_eq!(posteriors, vec![vec![0.0, 1.0, 0.0, 0.0]]);
-
-	let posteriors = map.observe(&[0.54, -0.5], &vec![0.5, 0.5, 0.0, 0.0]);
-	assert_eq!(posteriors[0], vec![1.0, 0.0, 0.0, 0.0]); // zone 0 close
-	assert_eq!(posteriors[1], vec![0.0, 1.0, 0.0, 0.0]); // zone 0 open
-	assert_eq!(posteriors.len(), 2); // zone 0 open
+	let posteriors = map.observe(&[0.68, -0.45], &vec![0.5; 2]);
+	assert_eq!(posteriors[0], vec![1.0, 0.0]); // in zone 0
+	assert_eq!(posteriors[1], vec![0.0, 1.0]); // not in zone 0
 }
 
 #[test]
 fn test_map_2_observation_model_outside_zones() {
-	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
-	let posteriors = map.observe(&[-0.3, -0.5], &vec![0.25; 4]);
-	assert_eq!(posteriors, vec![vec![0.25; 4]]);
+	let posteriors = map.observe(&[0.0, 0.0], &vec![0.5; 2]);
+	assert_eq!(posteriors, vec![vec![0.5; 2]]);
+
+	let posteriors = map.observe(&[0.0, 0.0], &vec![1.0, 0.0]);
+	assert_eq!(posteriors, vec![vec![1.0, 0.0]]);
+
+	let posteriors = map.observe(&[0.0, 0.0], &vec![0.0, 1.0]);
+	assert_eq!(posteriors, vec![vec![0.0, 1.0]]);
+}
+
+#[test]
+fn test_map_2_observation_model_edge_cases() {
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
+
+	let posteriors = map.observe(&[0.68, -0.45], &vec![1.0, 0.0]); // already known
+	assert_eq!(posteriors, vec![vec![1.0, 0.0]]);
+
+
+	let posteriors = map.observe(&[0.68, -0.45], &vec![0.0, 1.0]); // already known
+	assert_eq!(posteriors, vec![vec![0.0, 1.0]]);
 }
 
 #[test]
 fn test_map_2_observation_model_when_2_zones_seen_at_the_same_time() {
-	let mut map = Map::open("data/map2_fov.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_fov_zone_ids.pgm", 2.0);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 1.0);
 
-	let posteriors = map.observe(&[0.395, -0.245], &vec![0.25; 4]);
-	assert_eq!(posteriors, vec![vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 0.0, 1.0, 0.0], vec![0.0, 1.0, 0.0, 0.0], vec![0.0, 0.0, 0.0, 1.0]]);
+	let posteriors = map.observe(&[0.5, 0.5], &vec![0.5; 2]);
+	assert_eq!(posteriors, vec![vec![0.0, 1.0], vec![1.0, 0.0]]);
 }
 
 #[test]
 fn test_map_2_reachable_beliefs() {
-	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
-	let reachable_beliefs = map.reachable_belief_states(&vec![0.25; 4]);
-	assert_eq!(reachable_beliefs.len(), 9); 
-	assert!(reachable_beliefs.contains(&vec![0.25; 4]));
-	assert!(reachable_beliefs.contains(&vec![0.5, 0.5, 0.0, 0.0]));
-	assert!(reachable_beliefs.contains(&vec![0.5, 0.0, 0.5, 0.0]));
-	assert!(reachable_beliefs.contains(&vec![0.0, 0.5, 0.0, 0.5]));
-	assert!(reachable_beliefs.contains(&vec![0.0, 0.0, 0.5, 0.5]));
-	assert!(reachable_beliefs.contains(&vec![1.0, 0.0, 0.0, 0.0]));
-	assert!(reachable_beliefs.contains(&vec![0.0, 1.0, 0.0, 0.0]));
-	assert!(reachable_beliefs.contains(&vec![0.0, 0.0, 1.0, 0.0]));
-	assert!(reachable_beliefs.contains(&vec![0.0, 0.0, 0.0, 1.0]));
+	let reachable_beliefs = map.reachable_belief_states(&vec![0.5; 2]);
+	assert_eq!(reachable_beliefs.len(), 3); 
+	assert!(reachable_beliefs.contains(&vec![0.5; 2]));
+	assert!(reachable_beliefs.contains(&vec![1.0, 0.0]));
+	assert!(reachable_beliefs.contains(&vec![0.0, 1.0]));
 }
 
 #[test]
 fn test_map_2_world_validities() {
-	let mut map = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map2_zone_ids.pgm", 0.1);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 
 	let world_validities = map.world_validities();
-	assert_eq!(world_validities.len(), 3); 
-	assert!(world_validities.contains(&bitvec![1, 1, 1, 1])); // always valid
-	assert!(world_validities.contains(&bitvec![0, 1, 0, 1])); // valid only when first zone open 
-	assert!(world_validities.contains(&bitvec![0, 0, 1, 1])); // valid only when second door open
-}
-
-// MAP 4 zones
-#[test]
-fn test_map_4_construction() {
-	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map4_zone_ids.pgm", 0.1);
-
-	assert_eq!(map.n_zones, 4);
-	assert_eq!(map.n_worlds, 16);
-}
-
-#[test]
-fn test_map_4_states() {
-	let mut map = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	map.add_zones("data/map4_zone_ids.pgm", 0.1);
-
-	let world_validities = map.world_validities();
-
-	// door validity
-	assert_eq!(map.is_state_valid(&[0.0, 0.0]), Belief::Free);
-	assert_eq!(map.is_state_valid(&[0.0, -0.24]), Belief::Obstacle);
-	assert_eq!(map.is_state_valid(&[-0.67, -0.26]), Belief::Zone(0));
-
-	// world validities
-	assert_eq!(map.state_validity(&[-0.29, -0.23]), None);
-	assert_eq!(world_validities[map.state_validity(&[0.0, 0.0]).unwrap()], bitvec![1; 16]);
-
-	// world ennumerations
-	let mut world_mask = bitvec![0; 16];
-	let zone = 1;
-
-	for i in 0..map.n_worlds {
-		if i & (zone << 1) != 0 {
-			*world_mask.get_mut(i).unwrap() = true;
-		}
-	}
-
-	assert_eq!(map.zones_to_worlds[zone], world_mask);
-}
-
-#[test]
-fn test_resize_image() {
-	let mut m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.resize(2);
-	
-	m.save("results/tmp");
-	assert!(Path::new("results/tmp.png").exists());
-	fs::remove_file("results/tmp.png").unwrap();
+	assert_eq!(world_validities.len(), 1); 
+	assert!(world_validities.contains(&bitvec![1, 1])); // always valid
 }
 
 #[test]
 fn test_traversed_zone() {
-	let mut m = Map::open("data/map2_thin.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map2_thin_zone_ids.pgm", 0.2);
+	let mut map = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 	
-	let space = m.get_traversed_space(&[0.55, -0.8], &[0.55, -0.3]);
+	let space = map.get_traversed_space(&[0.68, -0.45], &[0.68, 0.38]);
+	assert_eq!(space, Belief::Obstacle);
 
-	assert_eq!(space, Belief::Zone(0));
+	let space = map.get_traversed_space(&[0.0, -0.45], &[0.0, 0.38]);
+	assert_eq!(space, Belief::Free);
 }
-
 }

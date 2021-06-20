@@ -4,6 +4,7 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*; // tests only
+use crate::map_shelves_io::*; // tests only
 use crate::prm_graph::*;
 use crate::prm_reachability::*;
 use crate::belief_graph::*;
@@ -111,8 +112,6 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					self.graph.add_edge(new_node_id, id, validity_id);
 				}
 
-				//let finality = goal.goal(&new_state);
-				//let is_final = finality.iter().any(|w|{*w});
 				if let Some(finality) = goal.goal(&new_state) {
 					self.conservative_reachability.add_final_node(new_node_id, finality);
 				}
@@ -239,12 +238,15 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	pub fn compute_expected_costs_to_goals(&mut self) {
-		//let mut final_belief_state_node_ids = final_node_ids.iter().fold(Vec::new(), |finals, final_id| { finals.extend(node_to_belief_nodes[final_id]); finals } );
+		// create belief node ids in belief space
 		let mut final_belief_state_node_ids: Vec<usize> = Vec::new();
-		for &final_id in &self.final_node_ids {
+		for (&final_id, validity) in self.conservative_reachability.final_nodes_with_validities() {
 			for belief_node_id in &self.node_to_belief_nodes[final_id] {
-				if belief_node_id.is_some() {
-					final_belief_state_node_ids.push(belief_node_id.unwrap());
+				if let Some(belief_node_id) = belief_node_id {
+					let belief_state = &self.belief_graph.nodes[*belief_node_id].belief_state;
+					if is_compatible(belief_state, validity) {
+						final_belief_state_node_ids.push(*belief_node_id);
+					}
 				}
 			}
 		}
@@ -374,6 +376,7 @@ fn test_plan_on_map2_fov_pomdp() {
 	m2.save("results/test_prm_on_map2_fov_pomdp");
 }
 
+
 #[test]
 fn test_plan_on_map0() {
 	let mut m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
@@ -400,6 +403,31 @@ fn test_plan_on_map0() {
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/test_prm_on_map0");
+}
+
+#[test]
+fn test_plan_on_map1_2_goals() {
+	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
+
+	let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
+									([0.68, 0.38], bitvec![0, 1])], 0.05);
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						DiscreteSampler::new(),
+						&m);
+
+	prm.grow_graph(&[-0.8, -0.8], &goal, 0.05, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	prm.print_summary();
+
+	let policy = prm.plan_belief_space(&vec![0.2, 0.8]);
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_full_graph(&prm.graph);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.save("results/test_plan_on_map1_2_goals_pomdp");
 }
 
 #[test]
