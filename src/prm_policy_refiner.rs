@@ -219,27 +219,53 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		}	
 	}
 
-	fn recompose(&self, trees: &Vec<RefinmentTree<N>>, _skeleton: &Vec<Vec<usize>>) -> Policy<N> {
-		// TODO: correct branching
+	fn recompose(&self, trees: &Vec<RefinmentTree<N>>, skeleton: &Vec<Vec<usize>>) -> Policy<N> {
 		let mut policy = Policy {
 			nodes: vec![],
 			leafs: vec![]
 		};
 
-		for tree in trees {
+		println!("skeleton:{:?}", skeleton);
+
+		let mut pieces_start_end: Vec<(usize, usize)> = vec![(0, 0); skeleton.len()];
+
+		for (i, tree) in trees.iter().enumerate() {
+			println!("new piece..");
+
 			let mut node = tree.nodes[tree.leaf];
 			let belief_node = &self.belief_graph.nodes[node.belief_graph_id];
-			policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
+			let id = policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
+
+			pieces_start_end[i].1 = id; // end of piece inserted first
 
 			while let Some(parent) = node.parent {
 				node = tree.nodes[parent.id];
 				let belief_node = &self.belief_graph.nodes[node.belief_graph_id];
 				let id = policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
 				policy.add_edge(id, id - 1);
+
+				println!("add edge {}-{}", id, id-1);
+
+				pieces_start_end[i].0 = id; // start of piece re-update along the way
 			}
 		}
 
-		for (i, node) in policy.nodes.iter().enumerate() {
+		println!("pieces_start_end:{:?}", pieces_start_end);
+
+		// reconnect to pieces branchings
+		for (i, next_pieces) in skeleton.iter().enumerate() {
+			let from_end = pieces_start_end[i].1;
+
+			for next_piece in next_pieces {
+				let to_start = pieces_start_end[*next_piece].0;
+
+				policy.add_edge(from_end, to_start);
+			}
+		}
+
+		// set remaining leafs
+		let nodes = policy.nodes.clone();
+		for (i, node) in nodes.iter().enumerate() {
 			if node.children.is_empty() {
 				policy.leafs.push(i);
 			}
@@ -299,15 +325,16 @@ mod tests {
 		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
 		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
-
-		let (policy, trees) = policy_refiner.refine_solution(0.3);
+		let (refined_policy, trees) = policy_refiner.refine_solution(0.3);
+		
+		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
 
 		let mut m2 = m.clone();
 		m2.resize(5);
 		m2.draw_full_graph(&prm.graph);
 		m2.draw_zones_observability();
 		m2.draw_refinment_trees(&trees);
-		m2.draw_policy(&policy);
+		m2.draw_policy(&refined_policy);
 		m2.save("results/test_prm_on_map2_pomdp_refined");
 	}
 
@@ -331,14 +358,16 @@ mod tests {
 		let policy = prm.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
 
 		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
-		let (policy, trees) = policy_refiner.refine_solution(0.3);
+		let (refined_policy, trees) = policy_refiner.refine_solution(0.3);
+
+		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
 
 		let mut m2 = m.clone();
 		m2.resize(5);
 		m2.draw_full_graph(&prm.graph);
 		m2.draw_zones_observability();
 		m2.draw_refinment_trees(&trees);
-		m2.draw_policy(&policy);
+		m2.draw_policy(&refined_policy);
 		m2.save("results/test_plan_on_map1_3_goals_pomdp_refined");
 	}
 }

@@ -54,7 +54,7 @@ impl Reachability {
 			.collect()
 	}
 
-	pub fn final_node_ids(&self) -> Vec<usize> {
+	pub fn get_final_node_ids(&self) -> Vec<usize> {
 		let mut final_node_ids = Vec::new();
 		for world in 0..self.n_worlds {
 			for final_id in self.final_nodes_for_world(world) {

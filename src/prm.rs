@@ -124,7 +124,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		match self.conservative_reachability.is_final_set_complete() {
 			true => {
-				self.final_node_ids = self.conservative_reachability.final_node_ids();
+				self.final_node_ids = self.conservative_reachability.get_final_node_ids();
 				Ok(())
 			},
 			_ => Err(&"final nodes are not reached for each world")
@@ -376,6 +376,30 @@ fn test_plan_on_map2_fov_pomdp() {
 	m2.save("results/test_prm_on_map2_fov_pomdp");
 }
 
+#[test]
+fn test_plan_on_map2_fov_bounds_restricted_pomdp() { // same example as before but with restricted sampling bounds
+	let mut m = Map::open("data/map2_fov.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map2_fov_zone_ids.pgm", 1.1);
+
+	let goal = SquareGoal::new(vec![([0.775, 0.4], bitvec![1; 4])], 0.05);
+
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -0.5], [1.0, 0.5]),
+						   DiscreteSampler::new(),
+						   &m);
+
+	prm.grow_graph(&[0.35, -0.125], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.print_summary();
+	let policy = prm.plan_belief_space(&vec![0.25, 0.25, 0.25, 0.25]);
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_full_graph(&prm.graph);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.save("results/test_prm_on_map2_fov_restricted_pomdp");
+}
+
 
 #[test]
 fn test_plan_on_map0() {
@@ -447,6 +471,7 @@ fn test_plan_on_map1_3_goals() {
 	prm.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 
+	//let policy = prm.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
 	let policy = prm.plan_belief_space(&vec![0.5/3.0, 0.5/3.0, 2.0/3.0]);
 
 	let mut m2 = m.clone();

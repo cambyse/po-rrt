@@ -18,7 +18,7 @@ pub type TransitionValidityCallbackType = extern fn(from_raw: *const f64, usize,
 pub type CostEvaluatorCallbackType = extern fn(from_raw: *const f64, usize, to_raw: *const f64, usize) -> f64;
 pub type ObserverCallbackType = extern fn(from_raw: *const f64, usize, belief_state_raw: *const f64, usize,
 										  belief_ids_raw: *mut *mut *mut usize, *mut usize);
-pub type GoalCallbackType = extern fn(*const f64, usize, *mut bool, usize);
+pub type GoalCallbackType = extern fn(*const f64, usize, *mut bool, usize) -> bool;
 pub type GoalExampleCallbackType = extern fn(usize, *mut f64, usize);
 
 //////////////////////////////////////////////////
@@ -41,6 +41,11 @@ pub struct CPlanningProblem{
 	// goal
 	goal_callback: Option<GoalCallbackType>,
 	goal_example_callback: Option<GoalExampleCallbackType>,
+	// search parameters
+	n_iterations_min: usize,
+	n_iterations_max: usize,
+	max_step: f64,
+	search_radius: f64,
 	// output
 	paths: Vec<Vec<Vec<f64>>>,
 	paths_lengths: Vec<usize>
@@ -65,6 +70,11 @@ pub extern "C" fn new_planning_problem() -> Box<CPlanningProblem> {
 			// goal
 			goal_callback: None,
 			goal_example_callback: None,
+			// parameters
+			n_iterations_min: 0,
+			n_iterations_max: 0,
+			max_step: 0.0,
+			search_radius: 0.0,
 			// output
 			paths: Vec::new(),
 			paths_lengths: Vec::new()
@@ -161,12 +171,22 @@ pub extern "C" fn set_goal_example_callback(planning_problem: *mut CPlanningProb
 	}
 }
 
+#[no_mangle]
+pub extern "C" fn set_search_parameters(planning_problem: *mut CPlanningProblem, n_iterations_min: usize, n_iterations_max: usize, max_step: f64, search_radius: f64) {
+	unsafe {
+		(*planning_problem).n_iterations_min = n_iterations_min;
+		(*planning_problem).n_iterations_max = n_iterations_max;
+		(*planning_problem).max_step = max_step;
+		(*planning_problem).search_radius = search_radius;
+	}
+}
+
 macro_rules! plan_inner {
     ($N:expr, $planning_problem:expr, $start:expr) => {
 		let fns = PRMFuncsAdapter::<$N>::new($planning_problem);
 		let goal = GoalAdapter::<$N>::new($planning_problem);
 		let mut prm = PRM::new(ContinuousSampler::new(fns.low, fns.up), DiscreteSampler::new(), &fns);
-		prm.grow_graph(&$start.try_into().unwrap(), &goal, 0.1, 5.0, 1000, 10000).expect("graph not grown up to solution");
+		prm.grow_graph(&$start.try_into().unwrap(), &goal, (*$planning_problem).max_step, (*$planning_problem).search_radius, (*$planning_problem).n_iterations_min, (*$planning_problem).n_iterations_max).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
 		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
@@ -187,6 +207,7 @@ pub extern "C" fn plan(planning_problem: *mut CPlanningProblem, start_raw: *mut 
 			2 => {plan_inner!(2, planning_problem, start);}, 
 			3 => {plan_inner!(3, planning_problem, start);},
 			7 => {plan_inner!(7, planning_problem, start);},
+			9 => {plan_inner!(9, planning_problem, start);},
 			_ => panic!("case not yet handled!")
 		};
 	}
@@ -233,7 +254,7 @@ pub fn save_paths<const N: usize>(planning_problem: *mut CPlanningProblem, polic
 	}
 
 	unsafe{
-		println!("paths:{:?}", paths);
+		//println!("paths:{:?}", paths);
 		(*planning_problem).paths = paths;
 		(*planning_problem).paths_lengths = paths_lengths;
 	}
@@ -325,7 +346,7 @@ impl<const N: usize> PRMFuncs<N> for PRMFuncsAdapter<N> {
 
 	fn state_validity(&self, state: &[f64; N]) -> Option<usize> {
 		unsafe {
-			let validity_id = (*self.planning_problem).state_validity_callback.unwrap()(state.as_ptr(), state.len());
+			let validity_id: i64 = (*self.planning_problem).state_validity_callback.unwrap()(state.as_ptr(), state.len());
 			if validity_id >= 0 { Some(validity_id as usize) } else { None }
 		}
 	}
@@ -386,10 +407,17 @@ impl<const N: usize> GoalFuncs<N> for GoalAdapter<N> {
 		unsafe {
 			let mut validity = vec![false; (*self.planning_problem).n_worlds];
 			let mut validity_bit_vec = bitvec![0; (*self.planning_problem).n_worlds];
-				(*self.planning_problem).goal_callback.unwrap()(state.as_ptr(), state.len(), validity.as_mut_ptr(), validity.len());
+				let is_goal = (*self.planning_problem).goal_callback.unwrap()(state.as_ptr(), state.len(), validity.as_mut_ptr(), validity.len());
+
+				if !is_goal
+				{
+					return None;
+				}
+
 				for i in 0..(*self.planning_problem).n_worlds { // keep bitvec??
 					validity_bit_vec.set(i, validity[i]);
 				}
+
 				Some(validity_bit_vec)
 		}
 	}
