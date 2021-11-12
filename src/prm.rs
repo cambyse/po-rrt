@@ -20,7 +20,6 @@ pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	pub n_worlds: usize,
 	n_it: usize,
 	pub graph: PRMGraph<N>,
-	final_node_ids: Vec<usize>,
 	// grow graph rrg
 	pub conservative_reachability: Reachability,
 	// pomdp
@@ -38,7 +37,6 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   n_worlds: fns.n_worlds(), 
 			   n_it: 0,
 			   graph: PRMGraph{nodes: vec![], validities: fns.world_validities()},
-			   final_node_ids: Vec::new(),
 			   conservative_reachability: Reachability::new(), 
 			   node_to_belief_nodes: Vec::new(),
 		       belief_graph: BeliefGraph{nodes: Vec::new(), reachable_belief_states: Vec::new()},
@@ -67,6 +65,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				let r = self.conservative_reachability.reachability(id);
 				r[world]
 			}); // log n
+
 			steer(&kd_from.state, &mut new_state, max_step); 
 
 			if let Some(state_validity_id) = self.fns.state_validity(&new_state) {
@@ -85,15 +84,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 				if neighbour_ids.is_empty() { neighbour_ids.push(kd_from.id); }
 
+				// No need to check differently the backward edges, assumption is pure path planning, and that paths are reversible
 				// Idea: sample which ones we rewire to?
-				let fwd_edges: Vec<(usize, usize)> = neighbour_ids.iter()
-					.map(|&id| (id, &self.graph.nodes[id]))
-					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
-					.filter(|(_, validity_id)| validity_id.is_some())
-					.map(|(id, validity_id)| (id, validity_id.unwrap()))
-					.collect();
-
-				let bwd_edges: Vec<(usize, usize)> = neighbour_ids.iter()
+				let edges: Vec<(usize, usize)> = neighbour_ids.iter()
 					.map(|&id| (id, &self.graph.nodes[id]))
 					.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
 					.filter(|(_, validity_id)| validity_id.is_some())
@@ -101,15 +94,15 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 					.collect();
 							
 				// connect neighbors to new node
-				for (id, validity_id) in fwd_edges {
-					self.conservative_reachability.add_edge(id, new_node_id, &self.graph.validities[validity_id]);
-					self.graph.add_edge(id, new_node_id, validity_id);
+				for (id, validity_id) in &edges {
+					self.conservative_reachability.add_edge(*id, new_node_id, &self.graph.validities[*validity_id]);
+					self.graph.add_edge(*id, new_node_id, *validity_id);
 				}
 
 				// connect new node to neighbor
-				for (id, validity_id) in bwd_edges {
-					self.conservative_reachability.add_edge(new_node_id, id, &self.graph.validities[validity_id]);
-					self.graph.add_edge(new_node_id, id, validity_id);
+				for (id, validity_id) in &edges {
+					self.conservative_reachability.add_edge(new_node_id, *id, &self.graph.validities[*validity_id]);
+					self.graph.add_edge(new_node_id, *id, *validity_id);
 				}
 
 				if let Some(finality) = goal.goal(&new_state) {
@@ -124,7 +117,6 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 		match self.conservative_reachability.is_final_set_complete() {
 			true => {
-				self.final_node_ids = self.conservative_reachability.get_final_node_ids();
 				Ok(())
 			},
 			_ => Err(&"final nodes are not reached for each world")
@@ -152,7 +144,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		println!("compute expected costs to goal..");
 
 		self.compute_expected_costs_to_goals();
-		
+				
 		println!("extract policy..");
 
 		let policy = self.extract_policy();
@@ -494,12 +486,12 @@ fn test_build_belief_graph() {
 	prm.n_worlds = 2;
 	prm.graph.validities = vec![bitvec![0, 1], bitvec![1, 1]];
 
-	prm.graph.add_node([0.55, -0.8], 1); // 0
-	prm.graph.add_node([-0.42, -0.38], 1); // 1
-	prm.graph.add_node([0.54, 0.0], 1);   // 2
-	prm.graph.add_node([0.54, 0.1], 0);   // 3
-	prm.graph.add_node([-0.97, 0.65], 1); // 4
-	prm.graph.add_node([0.55, 0.9], 1);   // 5
+	prm.graph.add_node([0.55, -0.8], 1); // 0 ~ [0, 1, 2]
+	prm.graph.add_node([-0.42, -0.38], 1); // 1 ~ [3, 4, 5]
+	prm.graph.add_node([0.54, 0.0], 1);   // 2 ~ [6, 7, 8]
+	prm.graph.add_node([0.54, 0.1], 0);   // 3 ~ [10, 11, 12]
+	prm.graph.add_node([-0.97, 0.65], 1); // 4 ~ [9, 10, 11]
+	prm.graph.add_node([0.55, 0.9], 1);   // 5 ~ [15, 16, 17]
 
 	prm.graph.add_bi_edge(0, 1, 1);
 	prm.graph.add_bi_edge(1, 2, 1);
@@ -509,7 +501,7 @@ fn test_build_belief_graph() {
 	prm.graph.add_bi_edge(1, 4, 1);
 	prm.graph.add_bi_edge(4, 5, 1);
 
-	prm.final_node_ids.push(5);
+	prm.conservative_reachability.add_final_node(5, bitvec![1, 1]);
 	//
 
 	let _policy = prm.plan_belief_space(&vec![0.5, 0.5]);	

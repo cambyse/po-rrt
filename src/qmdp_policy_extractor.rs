@@ -4,6 +4,7 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*; // tests only
+use crate::map_shelves_io::*; // tests only
 use crate::prm::*;
 use crate::prm_graph::*;
 use crate::prm_reachability::*;
@@ -172,25 +173,17 @@ fn test_plan_on_map2_qmdp() {
 
 #[test]
 fn test_plan_on_map1_2_goals() {
-	let mut m = Map::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
+	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
 
-	//fn goal(state: &[f64; 2]) -> WorldMask {
-	//	let mut finality = bitvec![0;2];
-	//	finality.set(0, (state[0] - 0.68).abs() < 0.05 && (state[1] + 0.45).abs() < 0.05);
-	//	finality.set(1, (state[0] - 0.68).abs() < 0.05 && (state[1] - 0.38).abs() < 0.05);
-	//	finality
-	//}
-
-	let goal = SquareGoal::new(vec![([0.68, 0.45], bitvec![1, 0]),
+	let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
 									([0.68, 0.38], bitvec![0, 1])], 0.05);
 
-
 	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
-						   DiscreteSampler::new(),
-						   &m);
+						DiscreteSampler::new(),
+						&m);
 
-	prm.grow_graph(&[-0.8, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[-0.8, -0.8], &goal, 0.05, 5.0, 2000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 
 	let mut qmdp = QMdpPolicyExtractor{

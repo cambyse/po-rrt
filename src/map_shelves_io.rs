@@ -179,8 +179,6 @@ impl MapShelfDomain {
 	}
 
 	fn get_traversed_space(&self, a: &[f64; 2], b: &[f64; 2]) -> Belief {
-		let mut traversed_space = Belief::Free;
-
 		let a_ij = self.to_pixel_coordinates(a);
 		let b_ij = self.to_pixel_coordinates(b);
 
@@ -196,7 +194,7 @@ impl MapShelfDomain {
 			}
 		}
 
-		traversed_space
+		Belief::Free
 	}
 
 	#[allow(clippy::style)]
@@ -437,12 +435,12 @@ impl MapShelfDomain {
 		}
 	}
 
-	pub fn draw_world(&mut self, world_id:usize) {
+	pub fn draw_world(&mut self, _world_id:usize) {
 		for i in 0..self.zones.as_ref().unwrap().height() {
 			for j in 0..self.zones.as_ref().unwrap().width() {
 				let z = self.get_zone_index(i, j);
 
-				if let Some(zone_id) = z {
+				if let Some(_) = z {
 					let color = CYAN;
 					self.img.put_pixel(j, i, color);
 				}	

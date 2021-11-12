@@ -46,6 +46,7 @@ pub struct CPlanningProblem{
 	n_iterations_max: usize,
 	max_step: f64,
 	search_radius: f64,
+	refine_radius: f64,
 	// output
 	paths: Vec<Vec<Vec<f64>>>,
 	paths_lengths: Vec<usize>
@@ -75,6 +76,7 @@ pub extern "C" fn new_planning_problem() -> Box<CPlanningProblem> {
 			n_iterations_max: 0,
 			max_step: 0.0,
 			search_radius: 0.0,
+			refine_radius: 0.0,
 			// output
 			paths: Vec::new(),
 			paths_lengths: Vec::new()
@@ -181,6 +183,13 @@ pub extern "C" fn set_search_parameters(planning_problem: *mut CPlanningProblem,
 	}
 }
 
+#[no_mangle]
+pub extern "C" fn set_refine_parameters(planning_problem: *mut CPlanningProblem, refine_radius: f64) {
+	unsafe {
+		(*planning_problem).refine_radius = refine_radius;
+	}
+}
+
 macro_rules! plan_inner {
     ($N:expr, $planning_problem:expr, $start:expr) => {
 		let fns = PRMFuncsAdapter::<$N>::new($planning_problem);
@@ -190,7 +199,7 @@ macro_rules! plan_inner {
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
 		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
-		let (policy, _) = policy_refiner.refine_solution(0.3);
+		let (policy, _) = policy_refiner.refine_solution((*$planning_problem).refine_radius);
 
 		save_paths($planning_problem, &policy);
     };

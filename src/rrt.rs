@@ -473,7 +473,7 @@ fn test_plan_on_map2() {
 		&mut samplers,
 		&m);
 
-	let (rrttree, policy, _paths) = rrt.plan([0.55, -0.8], &vec![1.0/16.0; 16], goal, 0.05, 5.0, 50_000);
+	let (rrttree, policy, _paths) = rrt.plan([0.55, -0.8], &vec![1.0/16.0; 16], goal, 0.05, 5.0, 5000);
 	//assert!(!paths.is_empty(), "No path found!");
 
 	for belief_id in 0..rrttree.belief_states.len() {

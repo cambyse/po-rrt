@@ -225,14 +225,14 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			leafs: vec![]
 		};
 
-		let mut pieces_start_end: Vec<(usize, usize)> = vec![(0, 0); skeleton.len()];
+		let mut pieces_start_end: Vec<(Option<usize>, Option<usize>)> = vec![(None, None); skeleton.len()];
 
 		for (i, tree) in trees.iter().enumerate() {
 			let mut node = tree.nodes[tree.leaf];
 			let belief_node = &self.belief_graph.nodes[node.belief_graph_id];
 			let id = policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
 
-			pieces_start_end[i].1 = id; // end of piece inserted first
+			pieces_start_end[i].1 = Some(id); // end of piece inserted first
 
 			while let Some(parent) = node.parent {
 				node = tree.nodes[parent.id];
@@ -240,7 +240,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 				let id = policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
 				policy.add_edge(id, id - 1);
 
-				pieces_start_end[i].0 = id; // start of piece re-update along the way
+				pieces_start_end[i].0 = Some(id); // start of piece re-update along the way
 			}
 		}
 
@@ -251,7 +251,10 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			for next_piece in next_pieces {
 				let to_start = pieces_start_end[*next_piece].0;
 
-				policy.add_edge(from_end, to_start);
+				match (from_end, to_start) {
+					(Some(from_end), Some(to_start)) => {policy.add_edge(from_end, to_start);},
+					_ => {}
+				}
 			}
 		}
 
