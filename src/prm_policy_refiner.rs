@@ -14,6 +14,10 @@ use queues::*;
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
 
+pub enum RefinmentStrategy {
+    Reparent,
+    PartialShortCut,
+}
 
 #[derive(Clone, Copy)]
 struct ParentLink {
@@ -63,22 +67,24 @@ pub struct PRMPolicyRefiner <'a, F: PRMFuncs<N>, const N: usize> {
 	pub policy: &'a Policy<N>,
 	pub fns: &'a F,
 	pub belief_graph: &'a BeliefGraph<N>,
-	pub compatibilities: Vec<Vec<bool>> 
+	pub compatibilities: Vec<Vec<bool>>,
+	pub strategy: RefinmentStrategy 
 }
 
 impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {	
-	pub fn new(policy: &'a Policy<N>, fns: &'a F, belief_graph: &'a BeliefGraph<N>) -> Self {
+	pub fn new(policy: &'a Policy<N>, fns: &'a F, belief_graph: &'a BeliefGraph<N>, strategy: RefinmentStrategy) -> Self {
 		Self{
 			policy,
 			fns,
 			belief_graph,
-			compatibilities: compute_compatibility(&belief_graph.reachable_belief_states, &fns.world_validities())
+			compatibilities: compute_compatibility(&belief_graph.reachable_belief_states, &fns.world_validities()),
+			strategy
 		}
 	}
 
 	pub fn refine_solution(&mut self, radius: f64) -> (Policy<N>, Vec<RefinmentTree<N>>) {
 		// option 1: extract traj pieces, refine each piece independently
-		// -> each piece can be converted to tree + reparenting + resamplning?
+		// -> each piece can be converted to tree + reparenting + resampling?
 		// option 2: extract tube in belief graph, 
 		// -> add samples in belief space directly + re-extract cond dijkstra
 
@@ -87,27 +93,120 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 
 		let (path_pieces, skeleton) = self.policy.decompose();
 		let mut trees = vec![];
-		let mut kdtrees = vec![];
 
 		for (_belief_state, path) in &path_pieces {
-			let (mut tree, kdtree) = self.build_tree(path, radius);
+			let tree = match self.strategy {
+				RefinmentStrategy::Reparent => {
+					let (mut tree, kdtree) = self.build_tree(path, radius);
+					self.reparent(&mut tree, &kdtree, 0.5 * radius);
+					tree
+				},
+				RefinmentStrategy::PartialShortCut => {
+					let mut path_piece = self.build_path_piece(path);
+					self.partial_shortcut(&mut path_piece);
+					path_piece
+				}
+			};
 
-			self.reparent(&mut tree, &kdtree, 0.5 * radius);
 
 			trees.push(tree);
-			kdtrees.push(kdtree);
 		}
 
 		let policy = self.recompose(&trees, &skeleton);
+
 		println!("success! (number of nodes:{}, number of leafs:{})", policy.nodes.len(), policy.leafs.len());
 
 		(policy, trees)
 	}
 
+	// Shortcut strategy
+	fn build_path_piece(&self, path: &[usize]) -> RefinmentTree<N> {
+		// add first node
+		let root_belief_graph_id = self.policy.nodes[*path.first().expect("path shouldn't be empty!")].original_node_id;
+		let root_belief_node = &self.belief_graph.nodes[root_belief_graph_id];
+
+		let mut tree = RefinmentTree {
+			nodes: vec![],
+			belief_state_id: 0,
+			leaf: 0
+		};
+		tree.add_node(root_belief_node.state.clone(), None, root_belief_graph_id);
+
+		// initialize tree with path
+		for (previous_policy_id, next_policy_id) in pairwise_iter(path) {
+			let previous_belief_graph_id = self.policy.nodes[*previous_policy_id].original_node_id;
+			let previous_belief_node = &self.belief_graph.nodes[previous_belief_graph_id];
+
+			let next_belief_graph_id = self.policy.nodes[*next_policy_id].original_node_id;
+			let next_belief_node = &self.belief_graph.nodes[next_belief_graph_id];
+
+			let edge = Edge{
+				id: tree.nodes.len() - 1,
+				cost: self.fns.cost_evaluator(&previous_belief_node.state, &next_belief_node.state)
+			};
+			tree.add_node(next_belief_node.state.clone(), Some(edge), next_belief_graph_id);
+		}
+		tree.belief_state_id = root_belief_node.belief_id;
+		tree.leaf = tree.nodes.len() - 1;
+		tree
+	}
+
+	fn partial_shortcut(&self, tree: &mut RefinmentTree<N>) {
+		fn interpolate(a: f64, b: f64, lambda: f64) -> f64 {
+			return a * (1.0 - lambda) + b * lambda;
+		}
+
+		if tree.nodes.len() <= 2 {
+			return; // can't shortcut with only 2 states or less
+		}
+
+		// Implement partial shortcut, see "Creating_High-quality_Paths_for_Motion_Planning"
+		let n_it_max = 1000;
+	
+		let joint_dim = tree.nodes.first().unwrap().state.len();
+		let mut sampler = DiscreteSampler::new();
+
+		for _i in 0..n_it_max {
+			let joint = sampler.sample(joint_dim);
+			let interval_start = sampler.sample(tree.nodes.len() - 2);
+			let interval_end = interval_start + 2 + sampler.sample(tree.nodes.len() - interval_start - 2);
+
+			assert!(interval_end < tree.nodes.len());
+			assert!(interval_end - interval_start >= 2);
+
+			let interval_start_state = &tree.nodes[interval_start].state;
+			let interval_end_state = &tree.nodes[interval_end].state;
+
+			// create shortcut states (interpolated on a particular joint)
+			let mut shortcut_states = vec![];
+			shortcut_states.reserve(interval_end - interval_start);
+			for j in interval_start..interval_end {
+				let lambda = (j - interval_start) as f64 / (interval_end - interval_start) as f64;
+				let mut shortcut_state = tree.nodes[j].state;
+				shortcut_state[joint] = interpolate(interval_start_state[joint], interval_end_state[joint], lambda);
+				shortcut_states.push(shortcut_state);
+			}
+
+			// check validities
+			let mut should_commit = true;
+			for (from, to) in pairwise_iter(&shortcut_states) {
+				should_commit = should_commit && self.is_transition_valid(from, to, tree.belief_state_id);
+			}
+
+			// commit if valid
+			if should_commit {
+				for j in interval_start..interval_end {
+					tree.nodes[j].state = shortcut_states[j - interval_start];
+				}
+			}
+		}
+	}
+
+	// Reparent strategy
 	fn build_tree(&self, path: &[usize], radius: f64) -> (RefinmentTree<N>, KdTree<N>) {
 		let mut visited = HashSet::new();
 
-		// add first nodes
+		// add first node
 		let root_belief_graph_id = self.policy.nodes[*path.first().expect("path shouldn't be empty!")].original_node_id;
 		let root_belief_node = &self.belief_graph.nodes[root_belief_graph_id];
 
@@ -305,6 +404,36 @@ mod tests {
     use super::*;
 
 	#[test]
+	fn test_plan_on_map2_pomdp_partial_shortcut() {
+		let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
+		m.add_zones("data/map2_zone_ids.pgm", 0.2);
+
+		let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
+
+		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+							DiscreteSampler::new(),
+							&m);
+
+		prm.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
+		prm.print_summary();
+		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
+
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph, RefinmentStrategy::PartialShortCut);
+		let (refined_policy, _) = policy_refiner.refine_solution(0.3);
+		
+		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
+
+		let mut m2 = m.clone();
+		m2.resize(5);
+		m2.draw_full_graph(&prm.graph);
+		m2.draw_zones_observability();
+		//m2.draw_policy(&policy);
+		//m2.draw_refinment_trees(&trees);
+		m2.draw_policy(&refined_policy);
+		m2.save("results/test_prm_on_map2_pomdp_refined_partial_shortcut");
+	}
+
+	#[test]
 	fn test_plan_on_map2_pomdp() {
 		let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 		m.add_zones("data/map2_zone_ids.pgm", 0.2);
@@ -319,7 +448,7 @@ mod tests {
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph, RefinmentStrategy::Reparent);
 		let (refined_policy, trees) = policy_refiner.refine_solution(0.3);
 		
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
@@ -352,7 +481,7 @@ mod tests {
 
 		let policy = prm.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph, RefinmentStrategy::Reparent);
 		let (refined_policy, trees) = policy_refiner.refine_solution(0.3);
 
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());

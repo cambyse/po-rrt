@@ -24,7 +24,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> QMdpPolicyExtractor<'a, F, N> {
 		// compute the cost to goals
 		self.cost_to_goals = vec![Vec::new(); *self.n_worlds];
 		for world in 0..*self.n_worlds {
-			let final_nodes = self.conservative_reachability.final_nodes_for_world(world);
+			let final_nodes = self.conservative_reachability.get_final_nodes_for_world(world);
 			if final_nodes.is_empty() {
 				return Err(&"We should have final node ids for each world")
 			}

@@ -198,7 +198,7 @@ macro_rules! plan_inner {
 		prm.grow_graph(&$start.try_into().unwrap(), &goal, (*$planning_problem).max_step, (*$planning_problem).search_radius, (*$planning_problem).n_iterations_min, (*$planning_problem).n_iterations_max).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph, RefinmentStrategy::PartialShortCut);
 		let (policy, _) = policy_refiner.refine_solution((*$planning_problem).refine_radius);
 
 		save_paths($planning_problem, &policy);

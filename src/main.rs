@@ -25,7 +25,7 @@ fn main() {
 	prm.print_summary();
 	let policy = prm.plan_belief_space(&vec![1.0/16.0; 16] ); //&vec![1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
 
-	let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+	let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph, RefinmentStrategy::Reparent);
 	let (policy, trees) = policy_refiner.refine_solution(0.3);
 
 	let mut m2 = m.clone();

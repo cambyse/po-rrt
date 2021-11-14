@@ -54,7 +54,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.kdtree.reset(start);
 
 		let mut i = 0;
-		while i < n_iter_min || !self.conservative_reachability.is_final_set_complete() && i < n_iter_max {
+		while i < n_iter_min || !self.conservative_reachability.is_final_set_complete() && i < n_iter_max { // order important! avoid calling the is_final_set_complete as long as the number of iterations is not reached!
 			i+=1;
 	
 			// First sample state and world
@@ -550,42 +550,3 @@ fn test_build_belief_graph() {
 // - actual PRM roadmap
 
 // tentative propagation code
-/*
-extern crate queues;
-use queues::*;
-use std::collections::HashSet;
-
-let mut visited = HashSet::new();
-let mut queue: Queue<usize> = queue![];
-//
-
-// connect new node to neighbor
-for &id in &bwd_ids {
-	self.graph.add_edge(new_node_id, id);
-	self.conservative_reachability.add_edge(new_node_id, id);
-
-	
-	// propagate
-	visited.insert(id);
-	queue.add(id).expect("Overflow!");
-}
-
-//
-
-while queue.size() > 0 {
-	let from_id = queue.remove().unwrap();
-
-	for to_id in self.graph.nodes[from_id].children.clone() {
-		if !contains(&self.conservative_reachability.reachability(to_id), &state_validity) {
-			self.conservative_reachability.add_edge(from_id, to_id);
-
-			if !visited.contains(&to_id) {
-				//println!("add node:{}", to_id);
-				queue.add(to_id).expect("Overflow");
-				visited.insert(to_id);
-			}
-		}
-	}
-}*/
-//println!("---");
-//
