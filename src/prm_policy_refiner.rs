@@ -15,8 +15,8 @@ use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
 
 pub enum RefinmentStrategy {
-    Reparent,
-    PartialShortCut,
+    Reparent(f64),
+    PartialShortCut(usize),
 }
 
 #[derive(Clone, Copy)]
@@ -68,21 +68,19 @@ pub struct PRMPolicyRefiner <'a, F: PRMFuncs<N>, const N: usize> {
 	pub fns: &'a F,
 	pub belief_graph: &'a BeliefGraph<N>,
 	pub compatibilities: Vec<Vec<bool>>,
-	pub strategy: RefinmentStrategy 
 }
 
 impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {	
-	pub fn new(policy: &'a Policy<N>, fns: &'a F, belief_graph: &'a BeliefGraph<N>, strategy: RefinmentStrategy) -> Self {
+	pub fn new(policy: &'a Policy<N>, fns: &'a F, belief_graph: &'a BeliefGraph<N>) -> Self {
 		Self{
 			policy,
 			fns,
 			belief_graph,
 			compatibilities: compute_compatibility(&belief_graph.reachable_belief_states, &fns.world_validities()),
-			strategy
 		}
 	}
 
-	pub fn refine_solution(&mut self, radius: f64) -> (Policy<N>, Vec<RefinmentTree<N>>) {
+	pub fn refine_solution(&mut self, strategy: RefinmentStrategy) -> (Policy<N>, Vec<RefinmentTree<N>>) {
 		// option 1: extract traj pieces, refine each piece independently
 		// -> each piece can be converted to tree + reparenting + resampling?
 		// option 2: extract tube in belief graph, 
@@ -95,15 +93,15 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		let mut trees = vec![];
 
 		for (_belief_state, path) in &path_pieces {
-			let tree = match self.strategy {
-				RefinmentStrategy::Reparent => {
+			let tree = match strategy {
+				RefinmentStrategy::Reparent(radius) => {
 					let (mut tree, kdtree) = self.build_tree(path, radius);
 					self.reparent(&mut tree, &kdtree, 0.5 * radius);
 					tree
 				},
-				RefinmentStrategy::PartialShortCut => {
+				RefinmentStrategy::PartialShortCut(n_iterations) => {
 					let mut path_piece = self.build_path_piece(path);
-					self.partial_shortcut(&mut path_piece);
+					self.partial_shortcut(&mut path_piece, n_iterations);
 					path_piece
 				}
 			};
@@ -151,7 +149,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		tree
 	}
 
-	fn partial_shortcut(&self, tree: &mut RefinmentTree<N>) {
+	fn partial_shortcut(&self, tree: &mut RefinmentTree<N>, n_iterations: usize) {
 		fn interpolate(a: f64, b: f64, lambda: f64) -> f64 {
 			return a * (1.0 - lambda) + b * lambda;
 		}
@@ -160,13 +158,11 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			return; // can't shortcut with only 2 states or less
 		}
 
-		// Implement partial shortcut, see "Creating_High-quality_Paths_for_Motion_Planning"
-		let n_it_max = 1000;
-	
+		// Implement partial shortcut, see "Creating_High-quality_Paths_for_Motion_Planning"	
 		let joint_dim = tree.nodes.first().unwrap().state.len();
 		let mut sampler = DiscreteSampler::new();
 
-		for _i in 0..n_it_max {
+		for _i in 0..n_iterations {
 			let joint = sampler.sample(joint_dim);
 			let interval_start = sampler.sample(tree.nodes.len() - 2);
 			let interval_end = interval_start + 2 + sampler.sample(tree.nodes.len() - interval_start - 2);
@@ -190,7 +186,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			// check validities
 			let mut should_commit = true;
 			for (from, to) in pairwise_iter(&shortcut_states) {
-				should_commit = should_commit && self.is_transition_valid(from, to, tree.belief_state_id);
+				should_commit = should_commit && self.is_transition_valid(from, to, tree.belief_state_id); // TODO: can be optimized to avoid rechecking 2 times the nodes
 			}
 
 			// commit if valid
@@ -390,7 +386,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			let validity = self.fns.transition_validator(&from_node, &to_node);
 
 			match validity {
-				Some(validity_id) => {return self.compatibilities[belief_state_id][validity_id]},
+				Some(validity_id) => {return self.compatibilities[belief_state_id][validity_id]}, // TODO: should check consistenty with from_validity and to_validity as well?
 				None => {return false;}
 			}
 		}
@@ -418,8 +414,8 @@ mod tests {
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph, RefinmentStrategy::PartialShortCut);
-		let (refined_policy, _) = policy_refiner.refine_solution(0.3);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(500));
 		
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
 
@@ -448,8 +444,8 @@ mod tests {
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph, RefinmentStrategy::Reparent);
-		let (refined_policy, trees) = policy_refiner.refine_solution(0.3);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let (refined_policy, trees) = policy_refiner.refine_solution(RefinmentStrategy::Reparent(0.3));
 		
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
 
@@ -481,8 +477,8 @@ mod tests {
 
 		let policy = prm.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph, RefinmentStrategy::Reparent);
-		let (refined_policy, trees) = policy_refiner.refine_solution(0.3);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let (refined_policy, trees) = policy_refiner.refine_solution(RefinmentStrategy::Reparent(0.3));
 
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
 

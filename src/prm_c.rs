@@ -46,7 +46,7 @@ pub struct CPlanningProblem{
 	n_iterations_max: usize,
 	max_step: f64,
 	search_radius: f64,
-	refine_radius: f64,
+	refine_iterations: usize,
 	// output
 	paths: Vec<Vec<Vec<f64>>>,
 	paths_lengths: Vec<usize>
@@ -76,7 +76,7 @@ pub extern "C" fn new_planning_problem() -> Box<CPlanningProblem> {
 			n_iterations_max: 0,
 			max_step: 0.0,
 			search_radius: 0.0,
-			refine_radius: 0.0,
+			refine_iterations: 0,
 			// output
 			paths: Vec::new(),
 			paths_lengths: Vec::new()
@@ -184,9 +184,9 @@ pub extern "C" fn set_search_parameters(planning_problem: *mut CPlanningProblem,
 }
 
 #[no_mangle]
-pub extern "C" fn set_refine_parameters(planning_problem: *mut CPlanningProblem, refine_radius: f64) {
+pub extern "C" fn set_refine_parameters(planning_problem: *mut CPlanningProblem, refine_iterations: usize) {
 	unsafe {
-		(*planning_problem).refine_radius = refine_radius;
+		(*planning_problem).refine_iterations = refine_iterations;
 	}
 }
 
@@ -198,8 +198,8 @@ macro_rules! plan_inner {
 		prm.grow_graph(&$start.try_into().unwrap(), &goal, (*$planning_problem).max_step, (*$planning_problem).search_radius, (*$planning_problem).n_iterations_min, (*$planning_problem).n_iterations_max).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph, RefinmentStrategy::PartialShortCut);
-		let (policy, _) = policy_refiner.refine_solution((*$planning_problem).refine_radius);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
+		let (policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut((*$planning_problem).refine_iterations));
 
 		save_paths($planning_problem, &policy);
     };
