@@ -210,7 +210,7 @@ pub extern "C" fn plan(planning_problem: *mut CPlanningProblem, start_raw: *mut 
     unsafe {
 		assert_eq!(start_size, (*planning_problem).state_dim);
 
-		let start: Vec<f64> = Vec::from_raw_parts(start_raw, start_size, start_size).try_into().unwrap();
+		let start: Vec<f64> = Vec::from_raw_parts(start_raw, start_size, start_size);
 
 		match (*planning_problem).state_dim {
 			2 => {plan_inner!(2, planning_problem, start);}, 
@@ -246,7 +246,7 @@ pub fn save_paths<const N: usize>(planning_problem: *mut CPlanningProblem, polic
 		let mut path : Vec<Vec<f64>> = Vec::new();
 		let mut current_id = leaf_id;
 		let mut current = &policy.nodes[current_id];
-
+		
 		path.push(current.state.try_into().unwrap());
 
 		while current.parent.is_some() {			
@@ -322,7 +322,7 @@ impl<const N: usize> PRMFuncsAdapter<N> {
 				let mut validity_bit_vec = bitvec![0; (*planning_problem).n_worlds];
 
 				for i in 0..validity_vec.len() {
-					validity_bit_vec.set(i, if validity_vec[i] > 0 { true } else { false });
+					validity_bit_vec.set(i, validity_vec[i] > 0);
 				}
 
 				world_validities.push(validity_bit_vec);

@@ -128,7 +128,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			belief_state_id: 0,
 			leaf: 0
 		};
-		tree.add_node(root_belief_node.state.clone(), None, root_belief_graph_id);
+		tree.add_node(root_belief_node.state, None, root_belief_graph_id);
 
 		// initialize tree with path
 		for (previous_policy_id, next_policy_id) in pairwise_iter(path) {
@@ -142,7 +142,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 				id: tree.nodes.len() - 1,
 				cost: self.fns.cost_evaluator(&previous_belief_node.state, &next_belief_node.state)
 			};
-			tree.add_node(next_belief_node.state.clone(), Some(edge), next_belief_graph_id);
+			tree.add_node(next_belief_node.state, Some(edge), next_belief_graph_id);
 		}
 		tree.belief_state_id = root_belief_node.belief_id;
 		tree.leaf = tree.nodes.len() - 1;
@@ -151,7 +151,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 
 	fn partial_shortcut(&self, tree: &mut RefinmentTree<N>, n_iterations: usize) {
 		fn interpolate(a: f64, b: f64, lambda: f64) -> f64 {
-			return a * (1.0 - lambda) + b * lambda;
+			a * (1.0 - lambda) + b * lambda
 		}
 
 		if tree.nodes.len() <= 2 {
@@ -211,8 +211,8 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			belief_state_id: 0,
 			leaf: 0
 		};
-		tree.add_node(root_belief_node.state.clone(), None, root_belief_graph_id);
-		let mut kdtree =  KdTree::new(root_belief_node.state.clone());
+		tree.add_node(root_belief_node.state, None, root_belief_graph_id);
+		let mut kdtree =  KdTree::new(root_belief_node.state);
 		visited.insert(root_belief_graph_id);
 
 		// initialize tree with path
@@ -227,7 +227,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 				id: tree.nodes.len() - 1,
 				cost: self.fns.cost_evaluator(&previous_belief_node.state, &next_belief_node.state)
 			};
-			let id = tree.add_node(next_belief_node.state.clone(), Some(edge), next_belief_graph_id);
+			let id = tree.add_node(next_belief_node.state, Some(edge), next_belief_graph_id);
 			kdtree.add(next_belief_node.state, id);
 			visited.insert(next_belief_graph_id);
 		}
@@ -281,7 +281,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 
 		while !q.is_empty() {
 			let (node_id, _) = q.pop().unwrap();
-			let node_state = tree.nodes[node_id].state.clone();
+			let node_state = tree.nodes[node_id].state;
 
 			let kd_neighbors = kdtree.nearest_neighbors(node_state, radius);
 			let neighbor_ids: Vec<usize> = kd_neighbors.iter()
@@ -314,7 +314,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		}	
 	}
 
-	fn recompose(&self, trees: &Vec<RefinmentTree<N>>, skeleton: &Vec<Vec<usize>>) -> Policy<N> {
+	fn recompose(&self, trees: &[RefinmentTree<N>], skeleton: &[Vec<usize>]) -> Policy<N> {
 		let mut policy = Policy {
 			nodes: vec![],
 			leafs: vec![]
@@ -346,9 +346,8 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			for next_piece in next_pieces {
 				let to_start = pieces_start_end[*next_piece].0;
 
-				match (from_end, to_start) {
-					(Some(from_end), Some(to_start)) => {policy.add_edge(from_end, to_start);},
-					_ => {}
+				if let (Some(from_end), Some(to_start)) = (from_end, to_start) {
+					policy.add_edge(from_end, to_start);
 				}
 			}
 		}
@@ -370,14 +369,14 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		
 		if let (Some(from_validity_id), Some(to_validity_id)) = (from_validity, to_validity) {
 			let from_node = PRMNode{
-				state: from.clone(),
+				state: *from,
 				validity_id: from_validity_id,
 				parents: vec![],
 				children: vec![]
 			};
 
 			let to_node = PRMNode{
-				state: to.clone(),
+				state: *to,
 				validity_id: to_validity_id,
 				parents: vec![],
 				children: vec![]
