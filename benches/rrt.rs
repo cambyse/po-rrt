@@ -3,6 +3,7 @@ use po_rrt::rrt::*;
 use po_rrt::sample_space::*;
 use po_rrt::map_io::*;
 
+/*
 fn rrt(max_iter: u32) {
 	struct Funcs {}
 	impl RRTFuncs<2> for Funcs {}
@@ -32,15 +33,15 @@ fn rrt_map(map: &Map, max_iter: u32) {
 
     let mut rrt = RRT::new(&mut samplers, map);
     let _ = rrt.plan([0.0, -0.8], &vec![0.25; 4], goal, 0.1, 10.0, max_iter);
-}
+}*/
 
 
 fn criterion_benchmark(c: &mut Criterion) {
 	let m = Map::open("data/rrt_map_0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-    c.bench_function("rrt 5000",      |b| b.iter(|| rrt(5000)));
+    /*c.bench_function("rrt 5000",      |b| b.iter(|| rrt(5000)));
     c.bench_function("rrt 15000",     |b| b.iter(|| rrt(15000)));
     c.bench_function("rrt map 5000",  |b| b.iter(|| rrt_map(&m, 5000)));
-    c.bench_function("rrt map 15000", |b| b.iter(|| rrt_map(&m, 15000)));
+    c.bench_function("rrt map 15000", |b| b.iter(|| rrt_map(&m, 15000)));*/
 }
 
 criterion_group!(benches, criterion_benchmark);

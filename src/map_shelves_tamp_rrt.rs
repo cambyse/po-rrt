@@ -90,7 +90,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				// query motion planner
 				// piece 1: go to target observe zone
 
-				// piece 2: object is here: plan to reach goal corresponding to target 
+				// piece 2: object is here: plan to reach goal corresponding to 
 
 				//
 

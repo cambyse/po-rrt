@@ -1,4 +1,4 @@
-use crate::{rrt::{Reachable, RRTFuncs, RRTTree}};
+use crate::{rrt::{RRTTree}};
 use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use crate::prm_policy_refiner::*;
 use crate::common::*;
@@ -294,7 +294,7 @@ impl MapShelfDomain {
 	}
 
 	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>, belief_id: Option<usize>) {
-		for c in &rrttree.nodes {
+		/*for c in &rrttree.nodes {
 			if let Some(ref parent_link) = c.parent {
 				let parent = &rrttree.nodes[parent_link.id];
 							
@@ -317,7 +317,7 @@ impl MapShelfDomain {
 				let color = color_map(c.belief_state_id);
 				self.draw_line(parent.state, c.state, color, 0.3);
 			}
-		}
+		}*/
 	}
 
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {

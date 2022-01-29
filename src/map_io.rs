@@ -1,4 +1,4 @@
-use crate::{rrt::{Reachable, RRTFuncs, RRTTree}};
+use crate::{rrt::{RRTTree}};
 use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
 use crate::prm_policy_refiner::*;
 use crate::common::*;
@@ -337,8 +337,8 @@ impl Map {
 		}
 	}
 
-	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>, belief_id: Option<usize>) {
-		for c in &rrttree.nodes {
+	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
+		/*for c in &rrttree.nodes {
 			if let Some(ref parent_link) = c.parent {
 				let parent = &rrttree.nodes[parent_link.id];
 							
@@ -361,7 +361,7 @@ impl Map {
 				let color = color_map(c.belief_state_id);
 				self.draw_line(parent.state, c.state, color, 0.3);
 			}
-		}
+		}*/
 	}
 
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {
@@ -498,34 +498,6 @@ impl Map {
 		}
 	}
 } 
-
-impl RRTFuncs<2> for Map {
-	fn state_validator(&self, state: &[f64; 2]) -> Reachable {
-		match self.is_state_valid(state) {
-			Belief::Free => Reachable::Always,
-			Belief::Obstacle => Reachable::Never,
-			Belief::Zone(zone) => Reachable::Restricted(&self.zones_to_worlds[zone]),
-		}
-	}
-
-	fn transition_validator(&self, a: &[f64; 2], b: &[f64; 2]) -> Reachable {
-		match self.get_traversed_space(a, b) {
-			Belief::Free => Reachable::Always,
-			Belief::Obstacle => Reachable::Never,
-			Belief::Zone(zone) => Reachable::Restricted(&self.zones_to_worlds[zone]),
-		}
-	}
-
-	fn observe_new_beliefs(&self, state: &[f64; 2], belief_state: &BeliefState) -> Vec<BeliefState> {
-		let mut output_beliefs = self.observe_impl(state, belief_state);
-
-		if output_beliefs.len() > 1 && output_beliefs[0] == *belief_state {
-			output_beliefs.remove(0);
-		}
-
-		output_beliefs
-	}
-}
 
 impl PRMFuncs<2> for Map {
 	fn n_worlds(&self) -> usize {
