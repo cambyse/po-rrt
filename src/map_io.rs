@@ -437,7 +437,7 @@ impl Map {
 		for from in &graph.nodes {
 			for to_edge in from.children.clone() {
 				let to  = &graph.nodes[to_edge.id];
-				self.draw_line(from.state, to.state, GRAY5, 0.3);
+				self.draw_line(from.state, to.state, GRAY5, 0.15);
 			}
 		}
 	}
@@ -562,6 +562,7 @@ impl PRMFuncs<2> for Map {
 
 	fn reachable_belief_states(&self, belief_state: &BeliefState) -> Vec<BeliefState> {
 		let mut reachable_beliefs: Vec<BeliefState> = Vec::new();
+		let mut reachable_beliefs_hashes = HashSet::new();
 		let mut lifo: Vec<(BeliefState, Vec<usize>)> = Vec::new(); // bs, doors to check
 
 		reachable_beliefs.push(belief_state.clone());
@@ -579,7 +580,10 @@ impl PRMFuncs<2> for Map {
 
 				for successor in &successors {
 					if !reachable_beliefs.contains(successor) {
-						reachable_beliefs.push(successor.clone());
+						if!reachable_beliefs_hashes.contains(&hash(successor)) {
+							reachable_beliefs.push(successor.clone());
+							reachable_beliefs_hashes.insert(hash(successor));
+						}
 						lifo.push((successor.clone(), remaining_zones.clone()));
 					}
 				}

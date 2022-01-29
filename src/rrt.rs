@@ -391,7 +391,7 @@ impl <const N: usize> From<&RRTTree<N>> for BeliefGraph<N> {
 			}
 		}
 
-        Self { nodes, reachable_belief_states }
+        Self::new(nodes, reachable_belief_states)
     }
 }
 

@@ -298,6 +298,11 @@ impl<const N: usize> GoalFuncs<N> for SquareGoal<N> {
 	}
 }
 
+pub fn hash(bs: &BeliefState) -> usize
+{
+    bs.iter().enumerate().fold(0, |h, (i, p)| h + (usize::pow(10, i as u32) + 1) * ( (p * 1000.0).round() as usize))
+}
+
 #[cfg(test)]
 mod tests {
 

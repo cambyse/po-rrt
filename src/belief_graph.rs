@@ -6,6 +6,7 @@ use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
+use std::collections::HashMap;
 use std::{collections::BTreeMap, ops::Index};
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -26,10 +27,20 @@ pub struct BeliefNode<const N: usize> {
 
 pub struct BeliefGraph<const N: usize> {
     pub nodes: Vec<BeliefNode<N>>,
-    pub reachable_belief_states: Vec<Vec<f64>>
+    pub reachable_belief_states: Vec<Vec<f64>>,
+    pub belief_states_to_id: HashMap<usize, usize>
 }
 
 impl<const N: usize> BeliefGraph<N> {
+    pub fn new(nodes: Vec<BeliefNode<N>>, reachable_belief_states: Vec<Vec<f64>>) -> Self {
+        let belief_states_to_id = create_belief_states_hash_map(&reachable_belief_states);
+        Self{
+            nodes,
+            reachable_belief_states,
+            belief_states_to_id
+        }
+    }
+
 	pub fn add_node(&mut self, state: [f64; N], belief_state: BeliefState, belief_id: usize, node_type: BeliefNodeType) -> usize {
         let id = self.nodes.len();
         self.nodes.push(
@@ -52,8 +63,28 @@ impl<const N: usize> BeliefGraph<N> {
     
     #[allow(clippy::style)]
     pub fn belief_id(&self, belief_state: &BeliefState) -> usize {
-        self.reachable_belief_states.iter().position(|belief| belief == belief_state).expect("belief state should be found here") // TODO: improve
+        let h = hash(belief_state);
+        match self.belief_states_to_id.get(&h) {
+            Some(id) => return *id,
+            _ => panic!("no if corresponding to this belief state!")
+        }
+        //self.reachable_belief_states.iter().position(|belief| belief == belief_state).expect(&format!("belief state {:?} should be found here:", belief_state)) // TODO: improve
     }
+}
+
+pub fn create_belief_states_hash_map(reachable_belief_states: &Vec<Vec<f64>>) -> HashMap<usize, usize>
+{
+    let mut  hm = HashMap::new();
+
+    for (i, belief) in reachable_belief_states.iter().enumerate() {
+        println!("{:?}: {}", belief, hash(&belief));
+
+        hm.insert(hash(&belief), i);
+    }
+
+    assert_eq!(hm.len(), reachable_belief_states.len(), "collision when hashing the belief states!");
+
+    hm
 }
 
 #[allow(clippy::style)]
@@ -74,6 +105,8 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
 	for &id in final_node_ids {
 		dist[id] = 0.0;
         q.push(id, Priority{prio: 0.0});
+
+        //println!("belief node:{:?}", graph.nodes[id].belief_state);
 	}
 
     let mut it = 0;
@@ -147,7 +180,7 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
     }
     */
     // debug
-    println!("conditional dijkstra finished..");
+    println!("conditional dijkstra finished.. expected cost from root={}", dist[0]);
     // 
 
 	dist
@@ -286,7 +319,7 @@ fn create_graph_1(belief_states: &Vec<Vec<f64>>) -> BeliefGraph<2> {
 
     bs: [0.0, 1.0]
     */
-    let mut belief_graph = BeliefGraph{nodes: Vec::new(), reachable_belief_states: Vec::new()};
+    let mut belief_graph = BeliefGraph::new(Vec::new(), Vec::new());
     
     // nodes
     belief_graph.add_node([0.0, 1.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 0
@@ -383,7 +416,7 @@ fn create_graph_2(belief_states: &Vec<Vec<f64>>) -> BeliefGraph<2> {
 
     bs: [0.0, 1.0]
     */
-    let mut belief_graph = BeliefGraph{nodes: Vec::new(), reachable_belief_states: Vec::new()};
+    let mut belief_graph = BeliefGraph::new(Vec::new(), Vec::new());
     
     // nodes
     belief_graph.add_node([0.0, 0.0], belief_states[0].clone(), 0, BeliefNodeType::Action); // 0
@@ -530,5 +563,15 @@ fn test_transitions() {
     assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![0.4, 0.6]), 1.0);
     assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![1.0, 0.0]), 0.4);
     assert_eq!(transition_probability(&vec![0.5, 0.0, 0.5, 0.0], &vec![0.0, 0.5, 0.0, 0.5]), 0.0);
+}
+
+#[test]
+fn test_belief_state_hashing() {
+    assert_ne!(hash(&vec![2.0/3.0, 1.0/3.0]), hash(&vec![1.0/3.0, 2.0/3.0]));
+}
+
+#[test]
+fn test_belief_has_map_creation_doesnt_panic() {
+    create_belief_states_hash_map(&vec![vec![0.5, 0.5], vec![1.0, 0.0], vec![0.0, 1.0]]);
 }
 }

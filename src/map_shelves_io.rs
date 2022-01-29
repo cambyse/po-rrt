@@ -488,12 +488,12 @@ impl PRMFuncs<2> for MapShelfDomain {
 
 	fn reachable_belief_states(&self, belief_state: &BeliefState) -> Vec<BeliefState> {
 		let mut reachable_beliefs: Vec<BeliefState> = Vec::new();
+		let mut reachable_beliefs_hashes = HashSet::new();
 		let mut lifo: Vec<(BeliefState, Vec<usize>)> = Vec::new(); // bs, doors to check
 
 		reachable_beliefs.push(belief_state.clone());
 		lifo.push((belief_state.clone(), (0..self.n_zones).collect()));
 
-		
 		while !lifo.is_empty() {
 			let (belief, zones_to_check) = lifo.pop().unwrap();
 
@@ -505,7 +505,10 @@ impl PRMFuncs<2> for MapShelfDomain {
 
 				for successor in &successors {
 					if !reachable_beliefs.contains(successor) {
-						reachable_beliefs.push(successor.clone());
+						if!reachable_beliefs_hashes.contains(&hash(successor)) {
+							reachable_beliefs.push(successor.clone());
+							reachable_beliefs_hashes.insert(hash(successor));
+						}
 						lifo.push((successor.clone(), remaining_zones.clone()));
 					}
 				}
@@ -667,5 +670,21 @@ fn test_traversed_zone() {
 
 	let space = map.get_traversed_space(&[0.0, -0.45], &[0.0, 0.38]);
 	assert_eq!(space, Belief::Free);
+}
+
+// test MAP 5
+#[test]
+fn test_map_5_construction() {
+	let mut map = MapShelfDomain::open("data/map5.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	map.add_zones("data/map5_8_goals_zone_ids.pgm", 0.2);
+
+	assert_eq!(map.n_zones, 8);
+	let world_validities = map.world_validities();
+	println!("world_validities: {}", world_validities.len());
+
+	let reachable_beliefs = map.reachable_belief_states(&vec![1.0 / 8.0; 8]);
+
+	println!("reachable_beliefs: {}", reachable_beliefs.len());
+	println!("{:?}", reachable_beliefs);
 }
 }

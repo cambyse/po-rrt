@@ -416,18 +416,18 @@ impl<const N: usize> GoalFuncs<N> for GoalAdapter<N> {
 		unsafe {
 			let mut validity = vec![false; (*self.planning_problem).n_worlds];
 			let mut validity_bit_vec = bitvec![0; (*self.planning_problem).n_worlds];
-				let is_goal = (*self.planning_problem).goal_callback.unwrap()(state.as_ptr(), state.len(), validity.as_mut_ptr(), validity.len());
+			let is_goal = (*self.planning_problem).goal_callback.unwrap()(state.as_ptr(), state.len(), validity.as_mut_ptr(), validity.len());
 
-				if !is_goal
-				{
-					return None;
-				}
+			if !is_goal
+			{
+				return None;
+			}
 
-				for i in 0..(*self.planning_problem).n_worlds { // keep bitvec??
-					validity_bit_vec.set(i, validity[i]);
-				}
+			for i in 0..(*self.planning_problem).n_worlds { // keep bitvec??
+				validity_bit_vec.set(i, validity[i]);
+			}
 
-				Some(validity_bit_vec)
+			Some(validity_bit_vec)
 		}
 	}
 

@@ -429,6 +429,35 @@ mod tests {
 	}
 
 	#[test]
+	fn test_plan_on_map4_pomdp() {
+		let mut m = Map::open("data/map4.pgm", [-1.0, -1.0], [1.0, 1.0]);
+		m.add_zones("data/map4_zone_ids.pgm", 0.15);
+	
+		let goal = SquareGoal::new(vec![([-0.55, 0.9], bitvec![1; 16])], 0.05);
+		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+							   DiscreteSampler::new(),
+							   &m);
+	
+		prm.grow_graph(&[0.55, -0.8], &goal, 0.05, 5.0, 10500, 100000).expect("graph not grown up to solution");
+		prm.print_summary();
+		let policy = prm.plan_belief_space( &vec![1.0/16.0; 16]);
+	
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(1500));
+		
+		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
+
+		let mut m2 = m.clone();
+		m2.resize(5);
+		m2.draw_full_graph(&prm.graph);
+		m2.draw_zones_observability();
+		//m2.draw_policy(&policy);
+		//m2.draw_refinment_trees(&trees);
+		m2.draw_policy(&refined_policy);
+		m2.save("results/test_prm_on_map4_pomdp_refined_partial_shortcut");
+	}
+
+	#[test]
 	fn test_plan_on_map2_pomdp() {
 		let mut m = Map::open("data/map2.pgm", [-1.0, -1.0], [1.0, 1.0]);
 		m.add_zones("data/map2_zone_ids.pgm", 0.2);

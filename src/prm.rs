@@ -39,7 +39,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   graph: PRMGraph{nodes: vec![], validities: fns.world_validities()},
 			   conservative_reachability: Reachability::new(), 
 			   node_to_belief_nodes: Vec::new(),
-		       belief_graph: BeliefGraph{nodes: Vec::new(), reachable_belief_states: Vec::new()},
+		       belief_graph: BeliefGraph::new(Vec::new(), Vec::new()),
 			   expected_costs_to_goals: Vec::new() }
 	}
 
@@ -161,7 +161,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		let world_validities = self.fns.world_validities();
 		let compatibilities = compute_compatibility(&reachable_belief_states, &world_validities);
 
-		let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
+		let mut belief_space_graph = BeliefGraph::new(Vec::new(), reachable_belief_states.clone());
+
+		//let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
 		let mut node_to_belief_nodes: Vec<Vec<Option<usize>>> = vec![vec![None; reachable_belief_states.len()]; self.graph.n_nodes()];
 		
 		// build nodes
@@ -472,6 +474,34 @@ fn test_plan_on_map1_3_goals() {
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/test_plan_on_map1_3_goals_pomdp");
+}
+
+#[test]
+fn test_plan_on_map5_4_goals() {
+	let mut m = MapShelfDomain::open("data/map5.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map5_4_goals_zone_ids.pgm", 0.4);
+
+	let goal = SquareGoal::new(vec![([-0.75, 0.75], bitvec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+									([-0.25, 0.75], bitvec![0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+									([ 0.25, 0.75], bitvec![0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+									([ 0.75, 0.75], bitvec![0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])],
+									 0.05);
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						DiscreteSampler::new(),
+						&m);
+
+	prm.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.print_summary();
+
+	let policy = prm.plan_belief_space(&vec![1.0/4.0, 1.0/4.0, 1.0/4.0, 1.0/4.0]);
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_full_graph(&prm.graph);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.save("results/map5/test_map5_4_goals_pomdp");
 }
 
 #[test]
