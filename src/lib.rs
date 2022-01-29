@@ -16,3 +16,4 @@ pub mod belief_graph;
 pub mod qmdp_policy_extractor;
 pub mod prm_policy_refiner;
 pub mod prm_c;
+pub mod map_shelves_tamp_rrt;

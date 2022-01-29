@@ -453,6 +453,10 @@ impl MapShelfDomain {
 			self.draw_circle(xy, self.visibility_distance, TEAL);
 		}
 	}
+
+	pub fn n_zones(&self) -> usize {
+		self.n_zones
+	}
 } 
 
 impl PRMFuncs<2> for MapShelfDomain {
