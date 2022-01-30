@@ -245,13 +245,12 @@ fn test_plan_empty_space() {
 #[test]
 fn test_plan_on_map() {
 	let m = MapShelfDomain::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	let m2 = m.clone();
 
-	struct Funcs {
-		m: MapShelfDomain,
+	struct Funcs<'a>  {
+		m: &'a MapShelfDomain,
 	}
 
-	impl RTTFuncs<2> for Funcs {
+	impl<'a> RTTFuncs<2> for Funcs<'a> {
 		fn state_validator(&self, state: &[f64; 2]) -> bool {
 			self.m.is_state_valid(state) == Belief::Free
 		}
@@ -265,15 +264,15 @@ fn test_plan_on_map() {
 		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
 	}	
 
-	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m});
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
 	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 10000);
 
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
-	
-	let mut m = m2;
-	m.draw_tree(&rrttree);
-	m.draw_path(path_result.unwrap().as_slice(), colors::BLACK);
-	m.save("results/test_plan_rrt_on_map.pgm")
+
+	let mut m2 = m.clone();
+	m2.draw_tree(&rrttree);
+	m2.draw_path(path_result.unwrap().as_slice(), colors::BLACK);
+	m2.save("results/test_plan_rrt_on_map.pgm")
 }
 }
