@@ -31,16 +31,16 @@ pub struct MapShelfDomainTampRRT<'a> {
 }
 
 impl SearchTree {
-	pub fn add_node(&mut self, parent_id: usize, state: [f64; 2], target_zone_id: usize, cost_from_root: f64, remaining_zones: &Vec<usize>) -> usize {
+	pub fn add_node(&mut self, parent_id: usize, state: [f64; 2], target_zone_id: usize, cost_from_root: f64, remaining_zones: &[usize]) -> usize {
 		let id = self.nodes.len();
 		let v = SearchNode{
-			id: id,
-			state: state,
+			id,
+			state,
 			target_zone_id: Some(target_zone_id),
 			parent: Some(parent_id),
 			children: Vec::new(),
-			cost_from_root: cost_from_root,
-			remaining_zones: remaining_zones.clone()
+			cost_from_root,
+			remaining_zones: remaining_zones.to_owned()
 		};
 
 		self.nodes.push(v);
@@ -57,7 +57,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 			   n_it: 0}
 	}
 
-	pub fn plan(&mut self, &start: &[f64; 2], goal: &impl GoalFuncs<2>, max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<(), &'static str> {
+	pub fn plan(&mut self, &start: &[f64; 2], _goal: &impl GoalFuncs<2>, _max_step: f64, _search_radius: f64, _n_iter_min: usize, _n_iter_max: usize) -> Result<(), &'static str> {
 		let mut q = PriorityQueue::new();
 
 		let root_node = SearchNode{
@@ -103,7 +103,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 		}
 
 		println!("it:{}, nodes:{}", it, search_tree.nodes.len());
-		println!("n leafs:{}", search_tree.nodes.iter().filter(|&n| n.remaining_zones.len() == 0 ).count());
+		println!("n leafs:{}", search_tree.nodes.iter().filter(|&n| n.remaining_zones.is_empty() ).count());
 
 		Ok(())
 	}
@@ -123,7 +123,7 @@ fn test_plan_on_map2_pomdp() {
 	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
 	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);			
-	tamp_rrt.plan(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000);
+	let _ = tamp_rrt.plan(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000);
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn test_plan_on_map7() {
 										0.05);
 
 	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);			
-	tamp_rrt.plan(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000);
+	let _ = tamp_rrt.plan(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000);
 }
 
 }

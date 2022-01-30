@@ -268,14 +268,14 @@ impl<const N: usize> SquareGoal<N> {
 
 					assert!(!world_has_goal[world]); // validities shouldn't overlap
 					
-					world_to_goal[world] = goal.clone();
+					world_to_goal[world] = *goal;
 					world_has_goal[world] = true;
 				}
 			}
 		}
 
 		Self{
-			goal_to_validity: goal_to_validity.clone(),
+			goal_to_validity: goal_to_validity,
 			world_to_goal,
 			max_dist
 		}
@@ -298,7 +298,7 @@ impl<const N: usize> GoalFuncs<N> for SquareGoal<N> {
 	}
 }
 
-pub fn hash(bs: &BeliefState) -> usize
+pub fn hash(bs: &[f64]) -> usize
 {
     bs.iter().enumerate().fold(0, |h, (i, p)| h + (usize::pow(10, i as u32) + 1) * ( (p * 1000.0).round() as usize))
 }

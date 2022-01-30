@@ -187,11 +187,7 @@ impl MapShelfDomain {
 
 		for (i, j) in line_drawing::Bresenham::new(a, b) {
 			let pixel = self.img.get_pixel(j as u32, i as u32);
-			match pixel[0] {
-				0 => return Belief::Obstacle,
-				_ => {
-				}
-			}
+			if pixel[0] == 0 { return Belief::Obstacle; }
 		}
 
 		Belief::Free
@@ -293,31 +289,14 @@ impl MapShelfDomain {
 		}
 	}
 
-	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>, belief_id: Option<usize>) {
-		/*for c in &rrttree.nodes {
-			if let Some(ref parent_link) = c.parent {
-				let parent = &rrttree.nodes[parent_link.id];
-							
-				if let Some(belief_id) = belief_id {
-					// roots
-					if c.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
-						self.draw_circle(&c.state, 0.01, PURPLE);
-					}
+	pub fn draw_tree(&mut self, rrttree: &RRTTree<2>) {
+		for c in &rrttree.nodes {
+			if let Some(ref parent_id) = c.parent_id {
+				let parent = &rrttree.nodes[*parent_id];
 
-					// observations
-					if parent.belief_state_id == belief_id && c.belief_state_id != parent.belief_state_id {
-						self.draw_circle(&c.state, 0.025, NAVY);
-					}
-
-					if c.belief_state_id != belief_id || parent.belief_state_id != belief_id {
-						continue;
-					}
-				}
-
-				let color = color_map(c.belief_state_id);
-				self.draw_line(parent.state, c.state, color, 0.3);
+				self.draw_line(parent.state, c.state, TEAL, 0.3);
 			}
-		}*/
+		}
 	}
 
 	pub fn draw_policy(&mut self, policy: &Policy<2>) {
@@ -349,12 +328,9 @@ impl MapShelfDomain {
 
 	pub fn draw_refinment_tree(&mut self, refinment_tree: &RefinmentTree<2>) {
 		for to in &refinment_tree.nodes {
-			match to.parent {
-				Some(parent) => {
-					let from = &refinment_tree.nodes[parent.id];
-					self.draw_line(from.state, to.state, YELLOW, 1.0);
-				},
-				_ => {}
+			if let Some(parent) = to.parent {
+				let from = &refinment_tree.nodes[parent.id];
+				self.draw_line(from.state, to.state, YELLOW, 1.0);
 			}
 		}
 	}
@@ -440,7 +416,7 @@ impl MapShelfDomain {
 			for j in 0..self.zones.as_ref().unwrap().width() {
 				let z = self.get_zone_index(i, j);
 
-				if let Some(_) = z {
+				if z.is_some() {
 					let color = CYAN;
 					self.img.put_pixel(j, i, color);
 				}	

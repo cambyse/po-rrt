@@ -235,12 +235,10 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		// create belief node ids in belief space
 		let mut final_belief_state_node_ids: Vec<usize> = Vec::new();
 		for (&final_id, validity) in self.conservative_reachability.final_nodes_with_validities() {
-			for belief_node_id in &self.node_to_belief_nodes[final_id] {
-				if let Some(belief_node_id) = belief_node_id {
-					let belief_state = &self.belief_graph.nodes[*belief_node_id].belief_state;
-					if is_compatible(belief_state, validity) {
-						final_belief_state_node_ids.push(*belief_node_id);
-					}
+			for belief_node_id in self.node_to_belief_nodes[final_id].iter().flatten() {
+				let belief_state = &self.belief_graph.nodes[*belief_node_id].belief_state;
+				if is_compatible(belief_state, validity) {
+					final_belief_state_node_ids.push(*belief_node_id);
 				}
 			}
 		}
@@ -259,13 +257,11 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	fn heuristic_radius(&self, max_step: f64, search_radius: f64) -> f64 {
-		let radius = {
+		{
 			let n = self.graph.nodes.len() as f64;
 			let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
 			if s < max_step { s } else { max_step }
-		};
-
-		radius
+		}
 	}
 }
 

@@ -11,7 +11,7 @@ use std::rc::{Weak, Rc};
 pub struct RRTNode<const N: usize> {
 	pub state: [f64; N],
 	pub parent_id: Option<usize>,
-	pub dist_from_parent: f64,
+	pub dist_from_root: f64,
 }
 
 pub struct RRTTree<const N: usize> {
@@ -20,32 +20,29 @@ pub struct RRTTree<const N: usize> {
 
 impl<const N: usize> RRTTree<N> {
 	fn new(state: [f64; N]) -> Self {
-		let root = RRTNode { state, parent_id: None, dist_from_parent: 0.0 };
+		let root = RRTNode { state, parent_id: None, dist_from_root: 0.0 };
 		Self { nodes: vec![root] }
 	}
 
-	fn add_node(&mut self, state: [f64; N], parent_id: usize) -> usize {
+	fn add_node(&mut self, state: [f64; N], parent_id: usize, dist_from_parent: f64) -> usize {
 		let id = self.nodes.len();
 
 		let parent = &self.nodes[parent_id];
-		let dist_from_parent = norm2(&parent.state, &state);
 
-		let node = RRTNode { state, parent_id: Some(parent_id), dist_from_parent };
+		let node = RRTNode { state, parent_id: Some(parent_id), dist_from_root: parent.dist_from_root + dist_from_parent};
 		self.nodes.push(node);
 		id
 	}
 
-	fn reparent_node(&mut self, node_id: usize, parent_id: usize) {
+	fn reparent_node(&mut self, node_id: usize, new_parent_id: usize, dist_from_new_parent: f64) {
 		// we do things in two steps to avoid making the borrow checker unhappy
-		let parent = &self.nodes[parent_id];
-		let node = &self.nodes[node_id];
-		let dist = norm2(&parent.state, &node.state);
-
+		let parent_dist_from_root = self.nodes[new_parent_id].dist_from_root;
 		let node = &mut self.nodes[node_id];
-		node.parent_id = Some(parent_id);
-		node.dist_from_parent = dist;
+		node.parent_id = Some(new_parent_id);
+		node.dist_from_root = parent_dist_from_root + dist_from_new_parent;
 	}
 
+	/*
 	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>) -> Vec<f64> {
 		if leaf_ids.is_empty() {
 			return vec![];
@@ -85,7 +82,7 @@ impl<const N: usize> RRTTree<N> {
 		leaf_ids.iter()
 			.map(|id| compute_distance_from_root(&self, &mut distances_from_root, *id))
 			.collect::<Vec<_>>()
-	}
+	}*/
 
 	fn get_path_to(&self, id: usize) -> Vec<[f64; N]> {
 		let mut path = Vec::new();
@@ -156,33 +153,43 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 					if s < max_step { s } else { max_step }
 				};
 
-				let neighbour_ids = kdtree.nearest_neighbors(new_state, radius).iter()
+				let mut neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
 					.filter(|node| self.fns.transition_validator(&node.state, &new_state))
 					.map(|node| node.id)
 					.collect();
 
+				if neighbour_ids.is_empty() {
+					neighbour_ids.push(kd_from.id);
+				}
+
 				// Evaluate which is the best parent that we can possibly get
-				let distances = rrttree.distances_from_common_ancestor(&neighbour_ids);
-				let (parent_id, parent_distance) = zip(&neighbour_ids, &distances)
-					.map(|(id,d)| (*id, *d))
-					.min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-					.unwrap_or((kd_from.id, 0.0));
+				let (distances_from_root, distances_from_parents): (Vec<f64>, Vec<f64>) = neighbour_ids.iter() // vec of pair (dist from root, dist from parent)
+					.map(|id| (id, &rrttree.nodes[*id]))
+					.map(|(_, parent)| (parent.dist_from_root, self.fns.cost_evaluator(&parent.state, &new_state)))
+					.unzip();
+			
+				//let dist_from_kd = self.fns.cost_evaluator(&rrttree.nodes[kd_from.id].state, &new_state);
+				let (best_parent_id, _best_parent_distance_from_root, distance_from_best_parent) = izip!(&neighbour_ids, &distances_from_root, &distances_from_parents)
+					.min_by(|(_, d0a, d1a), (_, d0b, d1b)| (*d0a + *d1a).partial_cmp(&(*d0b + *d1b)).unwrap())
+					.expect("should have at least the nearest neighbor!");
 
 				// Add the node in the trees
-				let new_node_id = rrttree.add_node(new_state, parent_id);
-				kdtree.add(new_state, new_node_id);
+				let new_node_id = rrttree.add_node(new_state, *best_parent_id, *distance_from_best_parent);
+				let new_node_distance_from_root = rrttree.nodes[new_node_id].dist_from_root;
 
 				// Step 2: Perhaps we can reparent some of the neighbours to the new node
-				let new_state_distance = parent_distance + rrttree.nodes[new_node_id].dist_from_parent;
-				for (neighbour_id, distance) in zip(&neighbour_ids, &distances) {
-					if *neighbour_id == parent_id { continue; }
+				for neighbour_id in &neighbour_ids {
+					if *neighbour_id == *best_parent_id { continue; }
 
 					let neighbour = &rrttree.nodes[*neighbour_id];
-					let new_distance = new_state_distance + self.fns.cost_evaluator(&new_state, &neighbour.state);
-					if new_distance < *distance {
-						rrttree.reparent_node(*neighbour_id, new_node_id);
+					let distance_from_new_node = self.fns.cost_evaluator(&new_state, &neighbour.state);
+					let distance_from_root_via_new_node = new_node_distance_from_root + distance_from_new_node;
+					if distance_from_root_via_new_node < neighbour.dist_from_root {
+						rrttree.reparent_node(*neighbour_id, new_node_id, distance_from_new_node);
 					}
 				}
+
+				kdtree.add(new_state, new_node_id);
 
 				if goal(&new_state) {
 					final_node_ids.push(new_node_id);
@@ -195,7 +202,7 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 		(rrttree, final_node_ids)
 	}
 
-	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &Vec<usize>) -> Result<Vec<[f64; N]>, &str> {
+	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize]) -> Result<Vec<[f64; N]>, &str> {
 		final_node_ids.iter()
 			.map(|id| {
 				let path = rrttree.get_path_to(*id);
@@ -207,7 +214,7 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 			.ok_or("No solution found")
 	}
 
-	fn get_path_cost(&self, path: &Vec<[f64; N]>) -> f64 {
+	fn get_path_cost(&self, path: &[[f64; N]]) -> f64 {
 		pairwise_iter(path)
 			.map(|(a,b)| self.fns.cost_evaluator(a,b))
 			.sum()
@@ -256,7 +263,7 @@ fn test_plan_on_map() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m});
 
-	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 5000);
+	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 10000);
 
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
 	

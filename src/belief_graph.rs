@@ -72,7 +72,7 @@ impl<const N: usize> BeliefGraph<N> {
     }
 }
 
-pub fn create_belief_states_hash_map(reachable_belief_states: &Vec<Vec<f64>>) -> HashMap<usize, usize> {
+pub fn create_belief_states_hash_map(reachable_belief_states: &[Vec<f64>]) -> HashMap<usize, usize> {
     let mut  hm = HashMap::new();
 
     for (i, belief) in reachable_belief_states.iter().enumerate() {
