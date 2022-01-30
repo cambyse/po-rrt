@@ -108,7 +108,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 			   n_it: 0}
 	}
 
-	pub fn plan(&mut self, &start: &[f64; 2], _goal: &impl GoalFuncs<2>, _max_step: f64, _search_radius: f64, _n_iter_min: usize, _n_iter_max: usize) -> Result<Vec<Vec<[f64; 2]>>, &'static str> {
+	pub fn plan(&mut self, &start: &[f64; 2], max_step: f64, search_radius: f64, n_iter: usize) -> Result<Vec<Vec<[f64; 2]>>, &'static str> {
 		let mut solution_nodes: Vec<SearchNode> = vec![];
 		let mut q = PriorityQueue::new();
 
@@ -151,7 +151,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				// piece 1: go to target observe zone
 				let observation_goal = ObservationGoal{m: &self.map_shelves_domain, zone_id: *target_zone_id};
 				
-				let (observation_planning_result, _) = rrt.plan(u.observation_state, &observation_goal, 0.1, 5.0, 5000);
+				let (observation_planning_result, _) = rrt.plan(u.observation_state, &observation_goal, max_step, search_radius, n_iter);
 				let (observation_path, observation_path_cost) = observation_planning_result.expect("no observation path found!");
 				let v_observation_state = observation_path.last().unwrap().clone();
 
@@ -159,7 +159,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				let zone_position = self.map_shelves_domain.get_zone_positions()[*target_zone_id];
 				let pickup_goal = SquareGoal::new(vec![(zone_position, bitvec![1])], 0.05);
 
-				let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, 0.1, 5.0, 5000);
+				let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, max_step, search_radius, n_iter);
 				let (pickup_path, pickup_path_cost) = pickup_planning_result.expect("no pickup path found!");
 				let v_pickup_state = pickup_path.last().unwrap().clone();
 				
@@ -247,10 +247,8 @@ fn test_plan_on_map2_pomdp() {
 	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
 
-	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
-
 	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);			
-	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000);
+	let path_tree = tamp_rrt.plan(&[0.0, -0.8], 0.05, 5.0, 5000);
 	let paths = path_tree.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
@@ -267,16 +265,8 @@ fn test_plan_on_map7() {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
-	let goal = SquareGoal::new(vec![([-0.9,-0.5], bitvec![1, 0, 0, 0, 0, 0]),
-									([-0.9, 0.5], bitvec![0, 1, 0, 0, 0, 0]),
-									([-0.5, 0.9], bitvec![0, 0, 1, 0, 0, 0]),
-									([ 0.5, 0.9], bitvec![0, 0, 0, 1, 0, 0]),
-									([ 0.9, 0.5], bitvec![0, 0, 0, 0, 1, 0]),
-									([ 0.9,-0.5], bitvec![0, 0, 0, 0, 0, 1])],
-										0.05);
-
 	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);			
-	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000);
+	let path_tree = tamp_rrt.plan(&[0.0, -0.8], 0.05, 5.0, 5000);
 	let paths = path_tree.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
