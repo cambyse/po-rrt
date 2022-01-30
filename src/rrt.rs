@@ -7,6 +7,7 @@ use crate::map_shelves_io::*;
 use std::{any, cmp::min, collections::BTreeMap, vec::Vec};
 use core::cell::RefCell;
 use std::rc::{Weak, Rc};
+use bitvec::prelude::*;
 
 pub struct RRTNode<const N: usize> {
 	pub state: [f64; N],
@@ -124,14 +125,14 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 		Self { sample_space, fns }
 	}
 
-	pub fn plan(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
+	pub fn plan(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
 				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
 		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_max);
 
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
 	}
 
-	fn grow_tree(&mut self, start: [f64; N], goal: fn(&[f64; N]) -> bool,
+	fn grow_tree(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
 				max_step: f64, search_radius: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<usize>) {
 		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new(start);
@@ -191,7 +192,7 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 
 				kdtree.add(new_state, new_node_id);
 
-				if goal(&new_state) {
+				if goal.goal(&new_state).is_some() {
 					final_node_ids.push(new_node_id);
 				}
 			}
@@ -231,20 +232,19 @@ fn test_plan_empty_space() {
 	struct Funcs {}
 	impl RTTFuncs<2> for Funcs {}
 
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.9).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
-	}	
+	let goal = SquareGoal::new(vec![([0.9, 0.9], bitvec![1])], 0.05);
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{});
 
-	let (path_result, _) = rrt.plan([0.0, 0.0], goal, 0.1, 1.0, 1000);
+	let (path_result, _) = rrt.plan([0.0, 0.0], &goal, 0.1, 1.0, 1000);
 
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
 }
 
 #[test]
-fn test_plan_on_map() {
-	let m = MapShelfDomain::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+fn test_plan_on_map7_prefefined_goal() {
+	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
 	struct Funcs<'a>  {
 		m: &'a MapShelfDomain,
@@ -260,19 +260,72 @@ fn test_plan_on_map() {
 		}
 	}
 
-	fn goal(state: &[f64; 2]) -> bool {
-		(state[0] - 0.0).abs() < 0.05 && (state[1] - 0.9).abs() < 0.05
-	}	
+	let goal = SquareGoal::new(vec![([0.9, -0.5], bitvec![1])], 0.05);
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
-	let (path_result, rrttree) = rrt.plan([0.0, -0.8], goal, 0.1, 5.0, 10000);
+	let (path_result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
 
 	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
 
 	let mut m2 = m.clone();
+	m2.resize(5);
 	m2.draw_tree(&rrttree);
+	m2.draw_zones_observability();
 	m2.draw_path(path_result.unwrap().as_slice(), colors::BLACK);
-	m2.save("results/test_plan_rrt_on_map.pgm")
+	m2.save("results/map7/test_map7_rrt_to_goal");
+}
+
+#[test]
+fn test_plan_on_map7_observation_point() {
+	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
+
+	struct Funcs<'a>  {
+		m: &'a MapShelfDomain,
+	}
+
+	impl<'a> RTTFuncs<2> for Funcs<'a> {
+		fn state_validator(&self, state: &[f64; 2]) -> bool {
+			self.m.is_state_valid(state) == Belief::Free
+		}
+
+		fn transition_validator(&self, from: &[f64; 2], to: &[f64; 2]) -> bool {
+			self.m.get_traversed_space(from, to) == Belief::Free
+		}
+	}
+
+	pub struct ObservationGoal<'a> {
+		m: &'a MapShelfDomain,
+		zone_id: usize
+	}
+
+	impl<'a> GoalFuncs<2> for ObservationGoal<'a> {
+		fn goal(&self, state: &[f64; 2]) -> Option<WorldMask> {	
+			if self.m.is_zone_observable(state, self.zone_id) {
+				return Some(bitvec![1]);
+			}
+			None
+		}
+	
+		fn goal_example(&self, _:usize) -> [f64; 2] {
+			self.m.get_zone_positions()[self.zone_id]
+		}
+	}
+
+	let goal = ObservationGoal{m: &m, zone_id: 2};
+
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
+
+	let (path_result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
+
+	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_tree(&rrttree);
+	m2.draw_zones_observability();
+	m2.draw_path(path_result.unwrap().as_slice(), colors::BLACK);
+	m2.save("results/map7/test_map7_rrt_to_observation_point");
 }
 }

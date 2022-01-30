@@ -235,20 +235,32 @@ impl MapShelfDomain {
 		output_beliefs.push(belief_state.clone());
 
 		for zone_id in 0..self.n_zones {
-			if  norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
-				let fov_feasability = self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::Obstacle;
+			if self.is_zone_observable(state, zone_id) {
+				let beliefs = output_beliefs.clone();
+				output_beliefs.clear();
 
-				if fov_feasability {
-					let beliefs = output_beliefs.clone();
-					output_beliefs.clear();
-
-					for belief in beliefs {
-						output_beliefs.extend(self.get_successor_belief_states(&belief, zone_id));
-					}
+				for belief in beliefs {
+					output_beliefs.extend(self.get_successor_belief_states(&belief, zone_id));
 				}
 			}
 		}
 		output_beliefs
+	}
+
+	pub fn is_zone_observable(&self, state: &[f64; 2], zone_id: usize) -> bool {
+		if norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
+			return self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::Obstacle;
+		}
+
+		false
+	}
+
+	pub fn n_zones(&self) -> usize {
+		self.n_zones
+	}
+	
+	pub fn get_zone_positions(&self) -> &Vec<[f64;2]>{
+		&self.zone_positions
 	}
 
 	// drawing functions
@@ -428,10 +440,6 @@ impl MapShelfDomain {
 		for xy in &self.zone_positions.clone() {
 			self.draw_circle(xy, self.visibility_distance, TEAL);
 		}
-	}
-
-	pub fn n_zones(&self) -> usize {
-		self.n_zones
 	}
 } 
 
