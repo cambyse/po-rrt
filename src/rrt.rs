@@ -126,20 +126,20 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 	}
 
 	pub fn plan(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
-				 max_step: f64, search_radius: f64, n_iter_max: u32) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
+				 max_step: f64, search_radius: f64, n_iter_max: usize) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
 		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_max);
 
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
 	}
 
 	fn grow_tree(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
-				max_step: f64, search_radius: f64, n_iter_max: u32) -> (RRTTree<N>, Vec<usize>) {
+				max_step: f64, search_radius: f64, n_iter_max: usize) -> (RRTTree<N>, Vec<usize>) {
 		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new(start);
 		let mut kdtree = KdTree::new(start);
 
-		for _ in 0..n_iter_max {
-			let mut new_state = self.sample_space.sample();
+		for it in 0..n_iter_max {
+			let mut new_state = self.sample(goal, it+1);
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
 			steer(&kd_from.state, &mut new_state, max_step);
@@ -201,6 +201,15 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 		//println!("number of final nodes: {}", final_nodes.len());
 
 		(rrttree, final_node_ids)
+	}
+
+	fn sample(&mut self, goal: &impl GoalFuncs<N>, iteration: usize) -> [f64; N] {
+		let new_state = match iteration % 100 {
+			0 => goal.goal_example(0),
+			_ => self.sample_space.sample()
+		};
+
+		new_state
 	}
 
 	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize]) -> Result<Vec<[f64; N]>, &str> {
