@@ -178,7 +178,7 @@ impl MapShelfDomain {
 		}
 	}
 
-	fn get_traversed_space(&self, a: &[f64; 2], b: &[f64; 2]) -> Belief {
+	pub fn get_traversed_space(&self, a: &[f64; 2], b: &[f64; 2]) -> Belief {
 		let a_ij = self.to_pixel_coordinates(a);
 		let b_ij = self.to_pixel_coordinates(b);
 

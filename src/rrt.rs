@@ -3,7 +3,7 @@ use itertools::{all, izip, zip};
 use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
-use crate::map_io::*;
+use crate::map_shelves_io::*;
 use std::{any, cmp::min, collections::BTreeMap, vec::Vec};
 use core::cell::RefCell;
 use std::rc::{Weak, Rc};
@@ -244,16 +244,20 @@ fn test_plan_empty_space() {
 
 #[test]
 fn test_plan_on_map() {
-	let m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	let m = MapShelfDomain::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	let m2 = m.clone();
 
 	struct Funcs {
-		m: Map,
+		m: MapShelfDomain,
 	}
 
 	impl RTTFuncs<2> for Funcs {
 		fn state_validator(&self, state: &[f64; 2]) -> bool {
 			self.m.is_state_valid(state) == Belief::Free
+		}
+
+		fn transition_validator(&self, from: &[f64; 2], to: &[f64; 2]) -> bool {
+			self.m.get_traversed_space(from, to) == Belief::Free
 		}
 	}
 
