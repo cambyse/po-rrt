@@ -126,7 +126,7 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 	}
 
 	pub fn plan(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
-				 max_step: f64, search_radius: f64, n_iter_max: usize) -> (Result<Vec<[f64; N]>, &str>, RRTTree<N>) {
+				 max_step: f64, search_radius: f64, n_iter_max: usize) -> (Result<(Vec<[f64; N]>, f64), &str>, RRTTree<N>) {
 		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_max);
 
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
@@ -212,7 +212,7 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 		new_state
 	}
 
-	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize]) -> Result<Vec<[f64; N]>, &str> {
+	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize]) -> Result<(Vec<[f64; N]>, f64), &str> {
 		final_node_ids.iter()
 			.map(|id| {
 				let path = rrttree.get_path_to(*id);
@@ -220,7 +220,7 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 				(path, cost)
 			})
 			.min_by(|(_,a),(_,b)| a.partial_cmp(b).expect("NaN found"))
-			.map(|(p, _)| p)
+			.map(|(p, c)| (p, c))
 			.ok_or("No solution found")
 	}
 
@@ -245,9 +245,10 @@ fn test_plan_empty_space() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{});
 
-	let (path_result, _) = rrt.plan([0.0, 0.0], &goal, 0.1, 1.0, 1000);
+	let (result, _) = rrt.plan([0.0, 0.0], &goal, 0.1, 1.0, 1000);
+	let (path_result, cost) = result.expect("No path found!");
 
-	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
+	assert!(path_result.len() > 2); // why do we need to clone?!
 }
 
 #[test]
@@ -273,15 +274,16 @@ fn test_plan_on_map7_prefefined_goal() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
-	let (path_result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
+	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
+	let (path_result, cost) = result.expect("No path found!");
 
-	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
+	assert!(path_result.len() > 2); // why do we need to clone?!
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_tree(&rrttree);
 	m2.draw_zones_observability();
-	m2.draw_path(path_result.unwrap().as_slice(), colors::BLACK);
+	m2.draw_path(path_result.as_slice(), colors::BLACK);
 	m2.save("results/map7/test_map7_rrt_to_goal");
 }
 
@@ -326,15 +328,16 @@ fn test_plan_on_map7_observation_point() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
-	let (path_result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
+	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
+	let (path_result, cost) = result.expect("No path found!");
 
-	assert!(path_result.clone().expect("No path found!").len() > 2); // why do we need to clone?!
+	assert!(path_result.len() > 2); // why do we need to clone?!
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_tree(&rrttree);
 	m2.draw_zones_observability();
-	m2.draw_path(path_result.unwrap().as_slice(), colors::BLACK);
+	m2.draw_path(path_result.as_slice(), colors::BLACK);
 	m2.save("results/map7/test_map7_rrt_to_observation_point");
 }
 }
