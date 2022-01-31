@@ -8,13 +8,15 @@ use po_rrt::{
     map_io::*,
 	map_shelves_io::*,
 	common::*,
-	prm_policy_refiner::*
+	prm_policy_refiner::*,
+	map_shelves_tamp_rrt::*
 };
 use bitvec::prelude::*;
 
 fn main()
 {
-	test_plan_on_map7_6_goals();
+	//test_plan_on_map7_6_goals();
+	test_plan_tamp_rrt_on_map7();
 }
 
 fn normalize_belief(unnormalized_belief_state: &BeliefState) -> BeliefState {
@@ -237,8 +239,7 @@ fn test_plan_on_map5_12_goals() {
 	m2.draw_policy(&policy);
 	m2.save("results/test_map5_12_goals_pomdp");
 }
-
-									
+							
 fn test_plan_on_map7_6_goals() {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
@@ -256,7 +257,7 @@ fn test_plan_on_map7_6_goals() {
 						DiscreteSampler::new(),
 						&m);
 
-	prm.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	prm.grow_graph(&[0.0, -0.8], &goal, 0.1, 2.0, 5000, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 
 	let initial_belief_state = vec![1.0/6.0; 6];
@@ -273,4 +274,23 @@ fn test_plan_on_map7_6_goals() {
 	m2.draw_zones_observability();
 	m2.draw_policy(&refined_policy);
 	m2.save("results/map7/test_map7_6_goals_pomdp");
+}
+
+fn test_plan_tamp_rrt_on_map7() {
+	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
+
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);	
+	
+	let initial_belief_state = vec![1.0/6.0; 6];
+	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
+	let paths = path_tree.expect("nopath tree found!");
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_zones_observability();
+	for path in paths {
+		m2.draw_path(path.as_slice(), po_rrt::map_shelves_io::colors::BLACK);
+	}
+	m2.save("results/map7/test_map7_tamp_rrt");
 }

@@ -75,7 +75,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				self.conservative_reachability.add_node(self.graph.validities[state_validity_id].clone());
 
 				// Fourth, we find the neighbors in a specific radius of new_state.
-				let radius = self.heuristic_radius(max_step, search_radius);
+				let radius = heuristic_radius(self.graph.nodes.len(), max_step, search_radius, N);
 
 				// Fifth we connect to neighbors 
 				let mut neighbour_ids: Vec<usize> = self.kdtree.nearest_neighbors(new_state, radius).iter()
@@ -257,11 +257,9 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	fn heuristic_radius(&self, max_step: f64, search_radius: f64) -> f64 {
-		{
-			let n = self.graph.nodes.len() as f64;
-			let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
-			if s < max_step { s } else { max_step }
-		}
+		let n = self.graph.nodes.len() as f64;
+		let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
+		if s < max_step { s } else { max_step }
 	}
 }
 

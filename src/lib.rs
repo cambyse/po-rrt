@@ -2,6 +2,7 @@
 #![feature(slice_group_by)]
 #![feature(vec_into_raw_parts)]
 #![feature(let_chains)]
+#![feature(map_first_last)]
 
 pub mod common;
 pub mod sample_space;

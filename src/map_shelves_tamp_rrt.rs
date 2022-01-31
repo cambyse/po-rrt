@@ -2,11 +2,19 @@ use itertools::{all, enumerate, izip, merge, zip};
 
 use crate::common::*;
 use crate::nearest_neighbor::*;
+use crate::belief_graph::*;
 use crate::sample_space::*;
 use crate::map_shelves_io::*;
 use crate::rrt::*;
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
+use std::collections::BTreeMap;
+use ordered_float::*;
+
+fn normalize_belief(unnormalized_belief_state: &BeliefState) -> BeliefState {
+	let sum = unnormalized_belief_state.iter().fold(0.0, |sum, p| sum + p);
+	unnormalized_belief_state.iter().map(|p| p / sum).collect()
+}
 
 struct Funcs<'a>  {
 	m: &'a MapShelfDomain,
@@ -57,7 +65,11 @@ pub struct SearchNode {
 	// costs
 	pub path_to_start_cost: f64,
 	pub path_to_observation_cost: f64,
-	pub path_to_pickup_cost: f64
+	pub path_to_pickup_cost: f64,
+	// probabilities
+	pub reaching_probability: f64,
+	pub belief_state: BeliefState,
+	pub expected_cost: f64
 }
 
 pub struct SearchTree {
@@ -68,7 +80,10 @@ impl SearchTree {
 	pub fn add_node(&mut self, parent_id: usize, target_zone_id: usize, remaining_zones: &[usize],
 					start_state: [f64; 2], observation_state: [f64; 2], pickup_state: [f64; 2],
 				    path_to_observation: Vec<[f64;2]>, path_to_pickup: Vec<[f64;2]>,
-					path_to_start_cost: f64, path_to_observation_cost:f64, path_to_pickup_cost: f64) -> usize {
+					path_to_start_cost: f64, path_to_observation_cost:f64, path_to_pickup_cost: f64,
+					reaching_probability: f64,
+					belief_state: &BeliefState,
+					expected_cost: f64) -> usize {
 		let id = self.nodes.len();
 		let v = SearchNode{
 			id,
@@ -83,7 +98,10 @@ impl SearchTree {
 			path_to_pickup,
 			path_to_start_cost,
 			path_to_observation_cost,
-			path_to_pickup_cost
+			path_to_pickup_cost,
+			reaching_probability,
+			belief_state: belief_state.clone(),
+			expected_cost
 		};
 
 		self.nodes.push(v);
@@ -108,13 +126,13 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 			   n_it: 0}
 	}
 
-	pub fn plan(&mut self, &start: &[f64; 2], max_step: f64, search_radius: f64, n_iter: usize) -> Result<Vec<Vec<[f64; 2]>>, &'static str> {
-		let mut solution_nodes: Vec<SearchNode> = vec![];
+	pub fn plan(&mut self, &start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter: usize) -> Result<Vec<Vec<[f64; 2]>>, &'static str> {
+		let mut solution_nodes = BTreeMap::new();
 		let mut q = PriorityQueue::new();
 
 		let root_node = SearchNode{
 			id: 0,
-			target_zone_id: Some(0),
+			target_zone_id: None,
 			parent: None,
 			children: Vec::new(),
 			remaining_zones: (0..self.map_shelves_domain.n_zones()).collect(),
@@ -125,7 +143,10 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 			path_to_pickup: vec![],
 			path_to_start_cost: 0.0,
 			path_to_observation_cost: 0.0,
-			path_to_pickup_cost: 0.0
+			path_to_pickup_cost: 0.0,
+			reaching_probability: 1.0,
+			belief_state: initial_belief_state.clone(),
+			expected_cost: 0.0
 		};
 
 		q.push(root_node.id, Priority{prio: root_node.path_to_start_cost});
@@ -137,9 +158,13 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 		// rrt 
 		let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&self.map_shelves_domain});
 
+		let mut best_expected_cost = std::f64::INFINITY;
 		let mut it = 0;
 		while !q.is_empty() {
 			it+=1;
+
+			println!("iteration:{}", it);
+
 			let (u_id, _) = q.pop().unwrap();
 			let u = search_tree.nodes[u_id].clone();
 
@@ -147,7 +172,15 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				let mut remaining_zones = u.remaining_zones.clone();
 				remaining_zones.retain(|zone_id| zone_id != target_zone_id);
 				
-				// query motion planner
+				// compute belief state and reaching probability
+				let mut v_belief_state = u.belief_state.clone();
+				if let Some(u_target_zone_id) = u.target_zone_id {
+					v_belief_state[u_target_zone_id] = 0.0; // we are at thisstage on theskeleton if the object was not there
+				}
+				v_belief_state = normalize_belief(&v_belief_state);
+				let reaching_probability = u.reaching_probability * transition_probability(&u.belief_state, &v_belief_state);
+
+				/// Query motion planner
 				// piece 1: go to target observe zone
 				let observation_goal = ObservationGoal{m: &self.map_shelves_domain, zone_id: *target_zone_id};
 				
@@ -162,7 +195,11 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, max_step, search_radius, n_iter);
 				let (pickup_path, pickup_path_cost) = pickup_planning_result.expect("no pickup path found!");
 				let v_pickup_state = pickup_path.last().unwrap().clone();
-				
+
+				// compute expected cost to start
+				let pickup_probability = v_belief_state[*target_zone_id];
+				let expected_cost = u.expected_cost + reaching_probability * (observation_path_cost + pickup_probability * pickup_path_cost);
+
 				// create next node
 				let v_id = search_tree.add_node(
 					u.id,
@@ -178,27 +215,41 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 					// costs
 					u.path_to_observation_cost,
 					observation_path_cost,
-					pickup_path_cost
+					pickup_path_cost,
+					// probabilities
+					reaching_probability,
+					&v_belief_state,
+					expected_cost
 				);
 
 				let v = &search_tree.nodes[v_id];
 
 				// addonly if not too bad
-				q.push(v_id, Priority{prio: v.path_to_start_cost});
+				if v.expected_cost < best_expected_cost {
+					q.push(v_id, Priority{prio: expected_cost});
+				}
+				else {
+					println!("prune!");
+				}
 			}
 
 			// save leaf node
 			if u.remaining_zones.is_empty() {
-				solution_nodes.push(u);
-				break;
+				if u.expected_cost < best_expected_cost {
+					best_expected_cost = u.expected_cost;
+				}
+				solution_nodes.insert(OrderedFloat(u.expected_cost), u);
 			}
 		}
 
 		println!("it:{}, nodes:{}", it, search_tree.nodes.len());
 		println!("n leafs:{}", search_tree.nodes.iter().filter(|&n| n.remaining_zones.is_empty() ).count());
 
-		let path_tree = self.reconstruct_path_tree(solution_nodes.last().unwrap(), &search_tree);
+		let (best_expected_cost, best_final_node) = solution_nodes.last_key_value().expect("No solution found!");
+		let path_tree = self.reconstruct_path_tree(&best_final_node, &search_tree);
 
+		println!("expected costs:{}", best_expected_cost);
+		
 		Ok(path_tree)
 	}
 
@@ -247,8 +298,10 @@ fn test_plan_on_map2_pomdp() {
 	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);			
-	let path_tree = tamp_rrt.plan(&[0.0, -0.8], 0.05, 5.0, 5000);
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);		
+	
+	let initial_belief_state = vec![1.0/2.0; 2];
+	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
 	let paths = path_tree.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
@@ -265,8 +318,10 @@ fn test_plan_on_map7() {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);			
-	let path_tree = tamp_rrt.plan(&[0.0, -0.8], 0.05, 5.0, 5000);
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);	
+	
+	let initial_belief_state = vec![1.0/6.0; 6];
+	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
 	let paths = path_tree.expect("nopath tree found!");
 
 	let mut m2 = m.clone();

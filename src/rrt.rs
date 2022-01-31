@@ -43,48 +43,6 @@ impl<const N: usize> RRTTree<N> {
 		node.dist_from_root = parent_dist_from_root + dist_from_new_parent;
 	}
 
-	/*
-	fn distances_from_common_ancestor(&self, leaf_ids: &Vec<usize>) -> Vec<f64> {
-		if leaf_ids.is_empty() {
-			return vec![];
-		}
-
-		if leaf_ids.len() == 1 {
-			return vec![0.0];
-		}
-
-		// We get a list of leaves. For each leaf, we go up the ancestor chain,
-		// until we hit the root, and compute the distance from the root.
-		// It would be more efficient to stop at the common ancestor, but we don't
-		// know which one it is.
-
-		fn compute_distance_from_root<const N: usize>(
-				tree: &RRTTree<N>,
-				distances_from_root: &mut BTreeMap<usize, f64>,
-				node_id: usize) -> f64 {
-			if node_id == 0 {
-				return 0.0;
-			}
-
-			if let Some(d) = distances_from_root.get(&node_id) {
-				return *d;
-			}
-
-			let node = &tree.nodes[node_id];
-			let parent_id = node.parent_id.unwrap();
-
-			let d = compute_distance_from_root(tree, distances_from_root, parent_id) + node.dist_from_parent;
-			distances_from_root.insert(node_id, d);
-
-			return d;
-		}
-
-		let mut distances_from_root = BTreeMap::new();
-		leaf_ids.iter()
-			.map(|id| compute_distance_from_root(&self, &mut distances_from_root, *id))
-			.collect::<Vec<_>>()
-	}*/
-
 	fn get_path_to(&self, id: usize) -> Vec<[f64; N]> {
 		let mut path = Vec::new();
 
@@ -148,16 +106,16 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 				// RRT* algorithm
 				// Step 1: Find the best parent we can get
 				// First, we find the neighbors in a specific radius of new_state.
-				let radius = {
-					let n = rrttree.nodes.len() as f64;
-					let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
-					if s < max_step { s } else { max_step }
-				};
+				let radius = heuristic_radius(rrttree.nodes.len(), max_step, search_radius, N);
 
 				let mut neighbour_ids: Vec<usize> = kdtree.nearest_neighbors(new_state, radius).iter()
 					.filter(|node| self.fns.transition_validator(&node.state, &new_state))
 					.map(|node| node.id)
 					.collect();
+
+				if it % 200 == 0 {
+					println!("it: {}  radius: {}  number of neighbors:{}", it, radius, neighbour_ids.len());
+				}
 
 				if neighbour_ids.is_empty() {
 					neighbour_ids.push(kd_from.id);
@@ -246,7 +204,7 @@ fn test_plan_empty_space() {
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{});
 
 	let (result, _) = rrt.plan([0.0, 0.0], &goal, 0.1, 1.0, 1000);
-	let (path_result, cost) = result.expect("No path found!");
+	let (path_result, _cost) = result.expect("No path found!");
 
 	assert!(path_result.len() > 2); // why do we need to clone?!
 }
@@ -274,8 +232,8 @@ fn test_plan_on_map7_prefefined_goal() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
-	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
-	let (path_result, cost) = result.expect("No path found!");
+	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500);
+	let (path_result, _cost) = result.expect("No path found!");
 
 	assert!(path_result.len() > 2); // why do we need to clone?!
 
@@ -328,8 +286,8 @@ fn test_plan_on_map7_observation_point() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
-	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 5.0, 5000);
-	let (path_result, cost) = result.expect("No path found!");
+	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500);
+	let (path_result, _cost) = result.expect("No path found!");
 
 	assert!(path_result.len() > 2); // why do we need to clone?!
 
