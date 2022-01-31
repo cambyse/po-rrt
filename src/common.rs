@@ -303,6 +303,20 @@ pub fn hash(bs: &[f64]) -> usize
     bs.iter().enumerate().fold(0, |h, (i, p)| h + (usize::pow(10, i as u32) + 1) * ( (p * 1000.0).round() as usize))
 }
 
+pub fn heuristic_radius(n_nodes: usize, max_step: f64, search_radius: f64, dim: usize) -> f64 {
+	// new implementation rationale:
+	// - allow 2 x more than max radius to allow moreagrssive simplification early on
+	// - use log10 instead of ln to keep thenumber of radius more constant in the regime where s < 2.0 x max_radius
+	let n = n_nodes as f64;
+	let s = search_radius * (n.log10()/n).powf(1.0/(dim as f64));
+	if s < 2.0 * max_step { s } else { 2.0 * max_step }
+
+	// previous implementation
+	/*let n = n_nodes as f64;
+	let s = search_radius * (n.ln()/n).powf(1.0/(dim as f64));
+	if s < max_step { s } else { max_step }*/
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -362,11 +376,17 @@ fn test_policy_decomposition() {
 	policy.add_edge(2, 4);
 	policy.add_edge(3, 5);
 
-
-
 	let (policy_pieces, _) = policy.decompose();
 
 	assert_eq!(policy_pieces.len(), 3);
 }
 
+#[test]
+fn test_heuristic_radius() {
+	println!("1:{}", heuristic_radius(1, 0.1, 2.0, 2));
+	println!("10:{}", heuristic_radius(10, 0.1, 2.0, 2));
+	println!("100:{}", heuristic_radius(100, 0.1, 2.0, 2));
+	println!("1000:{}", heuristic_radius(1000, 0.1, 2.0, 2));
+	println!("10000:{}", heuristic_radius(10000, 0.1, 2.0, 2));
+}
 }
