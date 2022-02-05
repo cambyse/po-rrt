@@ -86,11 +86,6 @@ pub fn create_belief_states_hash_map(reachable_belief_states: &[Vec<f64>]) -> Ha
     hm
 }
 
-#[allow(clippy::style)]
-pub fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -> f64 {
-    child_bs.iter().zip(parent_bs).fold(0.0, |s, (p, q)| s + if *p > 0.0 { *q } else { 0.0 } )
-}
-
 pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_ids: &[usize], cost_evaluator: impl Fn(&[f64; N], &[f64; N]) -> f64) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
@@ -190,7 +185,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
         panic!("no belief state graph!");
     }
 
-    let mut policy: Policy<N> = Policy{nodes: Vec::new(), leafs: Vec::new()};
+    let mut policy: Policy<N> = Policy{nodes: vec![], leafs: vec![], expected_costs: 0.0};
     let mut lifo: Vec<(usize, usize)> = Vec::new(); // policy_node, belief_graph_node
 
     policy.add_node(&graph.nodes[0].state, &graph.nodes[0].belief_state, 0, false);
@@ -217,6 +212,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
             }
         }
     }
+    policy.expected_costs = expected_costs_to_goals[0];
     policy
 }
 
@@ -551,17 +547,6 @@ fn test_conditional_dijkstra_and_extract_policy_on_graph_2() {
 
     assert_eq!(policy.leaf(0).state, [0.0, 3.0]); // policy arrives to goal
     assert_eq!(policy.leaf(1).state, [0.0, 3.0]);
-}
-
-
-#[test]
-fn test_transitions() {
-    assert_eq!(transition_probability(&vec![1.0, 0.0], &vec![1.0, 0.0]), 1.0);
-    assert_eq!(transition_probability(&vec![0.0, 1.0], &vec![1.0, 0.0]), 0.0);
-
-    assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![0.4, 0.6]), 1.0);
-    assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![1.0, 0.0]), 0.4);
-    assert_eq!(transition_probability(&vec![0.5, 0.0, 0.5, 0.0], &vec![0.0, 0.5, 0.0, 0.5]), 0.0);
 }
 
 #[test]
