@@ -113,9 +113,9 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 					.map(|node| node.id)
 					.collect();
 
-				if it % 200 == 0 {
-					println!("it: {}  radius: {}  number of neighbors:{}", it, radius, neighbour_ids.len());
-				}
+				//if it % 200 == 0 {
+				//	println!("it: {}  radius: {}  number of neighbors:{}", it, radius, neighbour_ids.len());
+				//}
 
 				if neighbour_ids.is_empty() {
 					neighbour_ids.push(kd_from.id);
