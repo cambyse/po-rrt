@@ -317,25 +317,45 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 	fn recompose(&self, trees: &[RefinmentTree<N>], skeleton: &[Vec<usize>]) -> Policy<N> {
 		let mut policy = Policy {
 			nodes: vec![],
-			leafs: vec![]
+			leafs: vec![],
+			expected_costs: 0.0
 		};
 
 		let mut pieces_start_end: Vec<(Option<usize>, Option<usize>)> = vec![(None, None); skeleton.len()];
 
 		for (i, tree) in trees.iter().enumerate() {
-			let mut node = tree.nodes[tree.leaf];
-			let belief_node = &self.belief_graph.nodes[node.belief_graph_id];
-			let id = policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
+			let mut previous_id = None;
 
-			pieces_start_end[i].1 = Some(id); // end of piece inserted first
-
+			// get backward node path and reverse it (needed for reparent strategy)
+			let mut node_path = vec![];
+			let mut node = &tree.nodes[tree.leaf];
+			node_path.push(node);
 			while let Some(parent) = node.parent {
-				node = tree.nodes[parent.id];
+			    node = &tree.nodes[parent.id];
+				node_path.push(node);
+			}
+			node_path.reverse();
+
+			// append nodes to policy
+			for (j, node) in node_path.iter().enumerate() {
+				let is_start = j== 0;
+				let is_end = j == node_path.len() - 1;
+
 				let belief_node = &self.belief_graph.nodes[node.belief_graph_id];
 				let id = policy.add_node(&node.state, &belief_node.belief_state, node.belief_graph_id, false);
-				policy.add_edge(id, id - 1);
 
-				pieces_start_end[i].0 = Some(id); // start of piece re-update along the way
+				if is_start {
+					pieces_start_end[i].0 = Some(id);
+				}
+				else if is_end {
+					policy.add_edge(previous_id.unwrap(), id);
+					pieces_start_end[i].1 = Some(id);
+				}
+				else {
+					policy.add_edge(previous_id.expect("shouldn't be none given the program flow"), id);
+				}
+
+				previous_id = Some(id);
 			}
 		}
 
@@ -359,6 +379,8 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 				policy.leafs.push(i);
 			}
 		}
+
+		policy.compute_expected_costs_to_goals(&|a: &[f64;N], b: &[f64;N]|self.fns.cost_evaluator(a, b));
 
 		policy
 	}
@@ -517,5 +539,36 @@ mod tests {
 		m2.draw_refinment_trees(&trees);
 		m2.draw_policy(&refined_policy);
 		m2.save("results/test_plan_on_map1_3_goals_pomdp_refined");
+	}
+
+	#[test]
+	fn test_plan_on_map1_2_goals() {
+		let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+		m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
+	
+		
+		let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
+										([0.68, 0.38], bitvec![0, 1])], 0.05);
+	
+		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+							DiscreteSampler::new(),
+							&m);
+		
+		prm.grow_graph(&[-0.9, 0.0], &goal, 0.1, 2.0, 2000, 100000).expect("graph not grown up to solution");
+		prm.print_summary();
+	
+		let initial_belief_state = vec![1.0/2.0; 2];
+	
+		let policy = prm.plan_belief_space(&initial_belief_state);
+		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(1500));
+		
+		let mut m2 = m.clone();
+		m2.resize(5);
+		m2.draw_full_graph(&prm.graph);
+		m2.draw_zones_observability();
+		m2.draw_policy(&policy);
+		m2.draw_policy(&refined_policy);
+		m2.save("results/test_plan_on_map1_2_goals");
 	}
 }
