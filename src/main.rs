@@ -12,11 +12,31 @@ use po_rrt::{
 	map_shelves_tamp_rrt::*
 };
 use bitvec::prelude::*;
+use std::time::Instant;
 
 fn main()
 {
-	//test_plan_on_map7_6_goals();
-	test_plan_tamp_rrt_on_map7();
+	let n_runs = 1;
+
+	let prm_iter_min = 5000;
+	let rrt_iter_min = 5000;
+
+	let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map1_2_goals(prm_iter_min)).unzip();
+	let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map1_2_goals(rrt_iter_min)).unzip();
+
+	// map7
+	//let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map7_6_goals(prm_iter_min)).unzip();
+	//let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map7_6_goals(rrt_iter_min)).unzip();
+
+	println!("PRM");
+	println!("prm_costs all: {:?}", prm_costs);
+	println!("planning_times: {:?}", compute_statistics(&prm_planning_times));
+	println!("costs: {:?}", compute_statistics(&prm_costs));
+
+	println!("RRT*");
+	println!("rrt_costs all: {:?}", rrt_costs);
+	println!("planning_times: {:?}", compute_statistics(&rrt_planning_times));
+	println!("costs: {:?}", compute_statistics(&rrt_costs));
 }
 
 fn normalize_belief(unnormalized_belief_state: &BeliefState) -> BeliefState {
@@ -239,8 +259,74 @@ fn test_plan_on_map5_12_goals() {
 	m2.draw_policy(&policy);
 	m2.save("results/test_map5_12_goals_pomdp");
 }
+
+fn test_plan_on_map1_2_goals(n_iter_min: usize) -> (f64, f64) {
+	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
+
+	
+	let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
+									([0.68, 0.38], bitvec![0, 1])], 0.05);
+
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						DiscreteSampler::new(),
+						&m);
+
+	let start = Instant::now();
+
+	prm.grow_graph(&[-0.9, 0.0], &goal, 0.1, 2.0, n_iter_min, 100000).expect("graph not grown up to solution");
+	prm.print_summary();
+
+	let initial_belief_state = vec![1.0/2.0; 2];
+
+	let policy = prm.plan_belief_space(&initial_belief_state);
+	let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+	let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(1500));
+
+	let duration = start.elapsed();
+	println!("duration:{:?}", duration);
+
+	//refined_policy.print();
+	println!("refined policy cost:{}", refined_policy.expected_costs);
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_full_graph(&prm.graph);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.draw_policy(&refined_policy);
+	m2.save("results/map7/test_plan_on_map1_2_goals");
+
+	(duration.as_secs_f64(), refined_policy.expected_costs)
+}
+
+fn test_plan_tamp_rrt_on_map1_2_goals(n_iter_min: usize) -> (f64, f64) {
+	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
+
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), &m);	
+	
+	let start = Instant::now();
+
+	let initial_belief_state = vec![1.0/6.0; 6];
+	let policy = tamp_rrt.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, n_iter_min);
+	let policy = policy.expect("nopath tree found!");
+
+	let duration = start.elapsed();
+	println!("duration:{:?}", duration);
+
+	//policy.print();
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.save("results/map7/test_plan_tamp_rrt_on_map1_2_goals");
+
+	(duration.as_secs_f64(), policy.expected_costs)
+}
 							
-fn test_plan_on_map7_6_goals() {
+fn test_plan_on_map7_6_goals(n_iter_min: usize) -> (f64, f64) {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
@@ -253,44 +339,62 @@ fn test_plan_on_map7_6_goals() {
 									([ 0.9,-0.5], bitvec![0, 0, 0, 0, 0, 1])],
 										0.05);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
-						DiscreteSampler::new(),
+	let mut prm = PRM::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]),
+						DiscreteSampler::new_true_random(),
 						&m);
 
-	prm.grow_graph(&[0.0, -0.8], &goal, 0.1, 2.0, 5000, 100000).expect("graph not grown up to solution");
+	let start = Instant::now();
+
+	prm.grow_graph(&[0.0, -1.0], &goal, 0.1, 2.0, n_iter_min, 100000).expect("graph not grown up to solution");
 	prm.print_summary();
 
 	let initial_belief_state = vec![1.0/6.0; 6];
-	//let initial_belief_state = normalize_belief(&vec![0.1, 1.0, 1.0, 0.1, 1.0, 1.0, 0.1, 1.0, 1.0]); // skewed towards right
+	//let initial_belief_state = normalize_belief(&vec![0.1, 0.1, 0.1, 0.1, 0.1, 1.0]); // skewed towards right
 	//let initial_belief_state = normalize_belief(&vec![1.0, 1.0, 0.1, 1.0, 1.0, 0.1, 1.0, 1.0, 0.1]); // skewed towards left
 
 	let policy = prm.plan_belief_space(&initial_belief_state);
 	let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
 	let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(1500));
 
+	let duration = start.elapsed();
+	println!("duration:{:?}", duration);
+
+	//refined_policy.print();
+	println!("refined policy cost:{}", refined_policy.expected_costs);
+
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_full_graph(&prm.graph);
 	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
 	m2.draw_policy(&refined_policy);
 	m2.save("results/map7/test_map7_6_goals_pomdp");
+
+	(duration.as_secs_f64(), refined_policy.expected_costs)
 }
 
-fn test_plan_tamp_rrt_on_map7() {
+fn test_plan_tamp_rrt_on_map7_6_goals(n_iter_min: usize) -> (f64, f64) {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);	
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), &m);	
 	
+	let start = Instant::now();
+
 	let initial_belief_state = vec![1.0/6.0; 6];
-	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
-	let paths = path_tree.expect("nopath tree found!");
+	let policy = tamp_rrt.plan(&[0.0, -1.0], &initial_belief_state, 0.1, 2.0, n_iter_min);
+	let policy = policy.expect("nopath tree found!");
+
+	let duration = start.elapsed();
+	println!("duration:{:?}", duration);
+
+	//policy.print();
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_zones_observability();
-	for path in paths {
-		m2.draw_path(path.as_slice(), po_rrt::map_shelves_io::colors::BLACK);
-	}
-	m2.save("results/map7/test_map7_tamp_rrt");
+	m2.draw_policy(&policy);
+	m2.save("results/map7/test_plan_tamp_rrt_on_map7_6_goals");
+
+	(duration.as_secs_f64(), policy.expected_costs)
 }
