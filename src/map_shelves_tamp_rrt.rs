@@ -115,21 +115,25 @@ pub struct MapShelfDomainTampRRT<'a> {
 	pub map_shelves_domain: &'a MapShelfDomain,
 	pub kdtree: KdTree<2>,
 	pub n_worlds: usize,
+	pub goal_radius: f64,
 	n_it: usize,
 }
 
 impl<'a> MapShelfDomainTampRRT<'a> {
-	pub fn new(continuous_sampler: ContinuousSampler<2>, map_shelves_domain: &'a MapShelfDomain) -> Self {
+	pub fn new(continuous_sampler: ContinuousSampler<2>, map_shelves_domain: &'a MapShelfDomain, goal_radius: f64) -> Self {
 		Self { continuous_sampler,
 			   map_shelves_domain, 
 			   kdtree: KdTree::new([0.0; 2]),
 			   n_worlds: map_shelves_domain.n_zones(), 
+			   goal_radius,
 			   n_it: 0}
 	}
 
-	pub fn plan(&mut self, &start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter: usize) -> Result<Policy<2>, &'static str> {
+	pub fn plan(&mut self, &start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<Policy<2>, &'static str> {
 		let mut solution_nodes = BTreeMap::new();
 		let mut q = PriorityQueue::new();
+
+		check_belief_state(initial_belief_state);
 
 		let root_node = SearchNode{
 			id: 0,
@@ -185,15 +189,15 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				// piece 1: go to target observe zone
 				let observation_goal = ObservationGoal{m: &self.map_shelves_domain, zone_id: *target_zone_id};
 				
-				let (observation_planning_result, _) = rrt.plan(u.observation_state, &observation_goal, max_step, search_radius, n_iter);
+				let (observation_planning_result, _) = rrt.plan(u.observation_state, &observation_goal, max_step, search_radius, n_iter_min, n_iter_max);
 				let (observation_path, observation_path_cost) = observation_planning_result.expect("no observation path found!");
 				let v_observation_state = observation_path.last().unwrap().clone();
 
 				// piece 2: object is here: plan to reach goal corresponding to 
 				let zone_position = self.map_shelves_domain.get_zone_positions()[*target_zone_id];
-				let pickup_goal = SquareGoal::new(vec![(zone_position, bitvec![1])], 0.05);
+				let pickup_goal = SquareGoal::new(vec![(zone_position, bitvec![1])], self.goal_radius);
 
-				let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, max_step, search_radius, n_iter);
+				let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, max_step, search_radius, n_iter_min, n_iter_max);
 				let (pickup_path, pickup_path_cost) = pickup_planning_result.expect("no pickup path found!");
 				let v_pickup_state = pickup_path.last().unwrap().clone();
 
@@ -311,7 +315,6 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 	}
 
 	pub fn build_policy(&self, leaf: &SearchNode, tree: &SearchTree) -> Policy<2> {
-
 		let node_path_to_last_leaf = self.get_search_nodes_to_last_leaf(leaf, tree);
 
 		let mut policy = Policy {
@@ -409,10 +412,10 @@ fn test_plan_on_map2_pomdp() {
 	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);		
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m, 0.05);		
 	
 	let initial_belief_state = vec![1.0/2.0; 2];
-	let policy = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
+	let policy = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500, 10000);
 	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
@@ -428,10 +431,10 @@ fn test_plan_on_map7() {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);	
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m, 0.05);	
 	
 	let initial_belief_state = vec![1.0/6.0; 6];
-	let policy = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
+	let policy = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500, 10000);
 	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();

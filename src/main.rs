@@ -19,7 +19,7 @@ fn main()
 	let n_runs = 1;
 
 	let prm_iter_min = 5000;
-	let rrt_iter_min = 2000;
+	let rrt_iter_min = 3000;
 
 	//let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map1_2_goals(prm_iter_min)).unzip();
 	//let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map1_2_goals(rrt_iter_min)).unzip();
@@ -27,12 +27,11 @@ fn main()
 	// map7
 	let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map7_6_goals(prm_iter_min)).unzip();
 	let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map7_6_goals(rrt_iter_min)).unzip();
-
+	
 	println!("PRM");
 	println!("prm_costs all: {:?}", prm_costs);
 	println!("planning_times: {:?}", compute_statistics(&prm_planning_times));
 	println!("costs: {:?}", compute_statistics(&prm_costs));
-
 	
 	println!("RRT*");
 	println!("rrt_costs all: {:?}", rrt_costs);
@@ -305,12 +304,12 @@ fn test_plan_tamp_rrt_on_map1_2_goals(n_iter_min: usize) -> (f64, f64) {
 	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), &m);	
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), &m, 0.05);	
 	
 	let start = Instant::now();
 
-	let initial_belief_state = vec![1.0/6.0; 6];
-	let policy = tamp_rrt.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, n_iter_min);
+	let initial_belief_state = vec![1.0/2.0; 2];
+	let policy = tamp_rrt.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, n_iter_min, 10000);
 	let policy = policy.expect("nopath tree found!");
 
 	let duration = start.elapsed();
@@ -378,12 +377,12 @@ fn test_plan_tamp_rrt_on_map7_6_goals(n_iter_min: usize) -> (f64, f64) {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), &m);	
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), &m, 0.05);	
 	
 	let start = Instant::now();
 
 	let initial_belief_state = vec![1.0/6.0; 6];
-	let policy = tamp_rrt.plan(&[0.0, -1.0], &initial_belief_state, 0.1, 2.0, n_iter_min);
+	let policy = tamp_rrt.plan(&[0.0, -1.0], &initial_belief_state, 0.1, 2.0, n_iter_min, 10000);
 	let policy = policy.expect("nopath tree found!");
 
 	let duration = start.elapsed();

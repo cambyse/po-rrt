@@ -238,17 +238,6 @@ impl Eq for Priority {}
 
 #[allow(clippy::style)]
 pub fn is_compatible(belief_state: &BeliefState, validity: &WorldMask) -> bool {
-
-	/*
-	assert_eq!(belief_state.len(), validity.len());
-
-	for i in 0..validity.len() {
-		if !validity[i] && belief_state[i] > 0.0 {
-			return false;
-		}
-	}
-	*/
-
 	for (&p, v) in belief_state.iter().zip(validity) {
 		if p > 0.0 && ! v {
 			return false;
@@ -380,6 +369,10 @@ pub fn compute_statistics(values: &[f64]) -> Statistics {
 		mean,
 		std_dev
 	}
+}
+
+pub fn check_belief_state(belief_state: &BeliefState) {
+	assert!((belief_state.iter().fold(0.0, |s, p| s + p) - 1.0).abs() < 0.001);
 }
 
 #[cfg(test)]

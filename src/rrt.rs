@@ -84,20 +84,23 @@ impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
 	}
 
 	pub fn plan(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
-				 max_step: f64, search_radius: f64, n_iter_max: usize) -> (Result<(Vec<[f64; N]>, f64), &str>, RRTTree<N>) {
-		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_max);
+				 max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> (Result<(Vec<[f64; N]>, f64), &str>, RRTTree<N>) {
+		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_min, n_iter_max);
 
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
 	}
 
 	fn grow_tree(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
-				max_step: f64, search_radius: f64, n_iter_max: usize) -> (RRTTree<N>, Vec<usize>) {
+				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> (RRTTree<N>, Vec<usize>) {
 		let mut final_node_ids = Vec::<usize>::new();
 		let mut rrttree = RRTTree::new(start);
 		let mut kdtree = KdTree::new(start);
 
-		for it in 0..n_iter_max {
-			let mut new_state = self.sample(goal, it+1);
+		let mut i = 0;
+		while i < n_iter_min || final_node_ids.is_empty() && i < n_iter_max { 
+			i+=1;
+
+			let mut new_state = self.sample(goal, i);
 			let kd_from = kdtree.nearest_neighbor(new_state);
 
 			steer(&kd_from.state, &mut new_state, max_step);
@@ -203,7 +206,7 @@ fn test_plan_empty_space() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{});
 
-	let (result, _) = rrt.plan([0.0, 0.0], &goal, 0.1, 1.0, 1000);
+	let (result, _) = rrt.plan([0.0, 0.0], &goal, 0.1, 1.0, 1000, 10000);
 	let (path_result, _cost) = result.expect("No path found!");
 
 	assert!(path_result.len() > 2); // why do we need to clone?!
@@ -232,7 +235,7 @@ fn test_plan_on_map7_prefefined_goal() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
-	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500);
+	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500, 10000);
 	let (path_result, _cost) = result.expect("No path found!");
 
 	assert!(path_result.len() > 2); // why do we need to clone?!
@@ -286,7 +289,7 @@ fn test_plan_on_map7_observation_point() {
 
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
 
-	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500);
+	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500, 10000);
 	let (path_result, _cost) = result.expect("No path found!");
 
 	assert!(path_result.len() > 2); // why do we need to clone?!
