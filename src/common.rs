@@ -135,7 +135,7 @@ impl<const N: usize> Policy<N> {
 	fn compute_expected_costs_to_goals_from(&self, p: f64, id: usize, cost_evaluator: &impl Fn(&[f64; N], &[f64; N]) -> f64) -> f64 {
 		let mut expected_future_costs = 0.0;
 
-		println!("id {}, p {}", id, p);
+		//println!("id {}, p {}", id, p);
 
 		let node = &self.nodes[id];
 		for &child_id in &node.children {
@@ -144,7 +144,7 @@ impl<const N: usize> Policy<N> {
 			let q = transition_probability(&node.belief_state, &child.belief_state);
 			let cost = cost_evaluator(&node.state, &child.state);
 			
-			println!("  from {}, to {}, q {}, cost {}", id, child_id, q, cost);
+			//println!("  from {}, to {}, q {}, cost {}", id, child_id, q, cost);
 
 			expected_future_costs += p * q * cost + self.compute_expected_costs_to_goals_from(p * q, child_id, cost_evaluator);
 		} 

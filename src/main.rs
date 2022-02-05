@@ -19,20 +19,21 @@ fn main()
 	let n_runs = 1;
 
 	let prm_iter_min = 5000;
-	let rrt_iter_min = 5000;
+	let rrt_iter_min = 2000;
 
-	let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map1_2_goals(prm_iter_min)).unzip();
-	let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map1_2_goals(rrt_iter_min)).unzip();
+	//let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map1_2_goals(prm_iter_min)).unzip();
+	//let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map1_2_goals(rrt_iter_min)).unzip();
 
 	// map7
-	//let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map7_6_goals(prm_iter_min)).unzip();
-	//let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map7_6_goals(rrt_iter_min)).unzip();
+	let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map7_6_goals(prm_iter_min)).unzip();
+	let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map7_6_goals(rrt_iter_min)).unzip();
 
 	println!("PRM");
 	println!("prm_costs all: {:?}", prm_costs);
 	println!("planning_times: {:?}", compute_statistics(&prm_planning_times));
 	println!("costs: {:?}", compute_statistics(&prm_costs));
 
+	
 	println!("RRT*");
 	println!("rrt_costs all: {:?}", rrt_costs);
 	println!("planning_times: {:?}", compute_statistics(&rrt_planning_times));

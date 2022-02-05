@@ -244,11 +244,15 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 		}
 
 		// DP in belief state
-		self.expected_costs_to_goals = conditional_dijkstra(&self.belief_graph, &final_belief_state_node_ids, |a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
+		self.expected_costs_to_goals = conditional_dijkstra(&self.belief_graph, &final_belief_state_node_ids, &|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
 	}
 
 	pub fn extract_policy(&self) -> Policy<N> {
-		extract_policy(&self.belief_graph, &self.expected_costs_to_goals)
+		//let mut policy = extract_policy(&self.belief_graph, &self.expected_costs_to_goals, &|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b) );
+		//policy.compute_expected_costs_to_goals(&|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
+		//println!("COST:{}", policy.expected_costs);
+
+		extract_policy(&self.belief_graph, &self.expected_costs_to_goals, &|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b) )
 	}
 
 	pub fn print_summary(&self) {
@@ -269,6 +273,28 @@ mod tests {
 use crate::belief_graph;
 
 use super::*;
+
+#[test]
+fn test_plan_on_map0_pomdp() {
+	let mut m = Map::open("data/map0.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.init_without_zones();
+
+	let goal = SquareGoal::new(vec![([0.0, 0.9], bitvec![1; 1])], 0.05);
+	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+						   DiscreteSampler::new(),
+						   &m);
+
+	prm.grow_graph(&[0.0, 0.0], &goal, 0.1, 5.0, 100, 100000).expect("graph not grown up to solution");
+	prm.print_summary();
+	let policy = prm.plan_belief_space(&vec![1.0]);
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_full_graph(&prm.graph);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.save("results/test_prm_on_map0_pomdp");
+}
 
 #[test]
 fn test_plan_on_map2_pomdp() {

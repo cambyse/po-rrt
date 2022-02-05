@@ -86,7 +86,7 @@ pub fn create_belief_states_hash_map(reachable_belief_states: &[Vec<f64>]) -> Ha
     hm
 }
 
-pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_ids: &[usize], cost_evaluator: impl Fn(&[f64; N], &[f64; N]) -> f64) -> Vec<f64> {
+pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_ids: &[usize], cost_evaluator: &impl Fn(&[f64; N], &[f64; N]) -> f64) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
     let mut dist = vec![std::f64::INFINITY; graph.nodes.len()];
@@ -99,7 +99,6 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
 	for &id in final_node_ids {
 		dist[id] = 0.0;
         q.push(id, Priority{prio: 0.0});
-
         //println!("belief node:{:?}", graph.nodes[id].belief_state);
 	}
 
@@ -180,7 +179,7 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
 	dist
 }
 
-pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_goals: &[f64]) -> Policy<N> {
+pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_goals: &[f64], cost_evaluator: &impl Fn(&[f64; N], &[f64; N]) -> f64) -> Policy<N> {
     if graph.nodes.is_empty() {
         panic!("no belief state graph!");
     }
@@ -195,7 +194,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
     while !lifo.is_empty() {
         let (policy_node_id, belief_node_id) = lifo.pop().unwrap();
 
-        let children_ids = get_best_expected_children(graph, belief_node_id, expected_costs_to_goals);
+        let children_ids = get_best_expected_children(graph, belief_node_id, expected_costs_to_goals, cost_evaluator);
 
         //println!("---");
 
@@ -216,30 +215,44 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
     policy
 }
 
-pub fn get_best_expected_children<const N: usize>(graph: &BeliefGraph<N>, belief_node_id: usize, expected_costs_to_goals: &[f64]) -> Vec<usize> {    
+pub fn get_best_expected_children<const N: usize>(graph: &BeliefGraph<N>, belief_node_id: usize, expected_costs_to_goals: &[f64], cost_evaluator: &impl Fn(&[f64; N], &[f64; N]) -> f64 ) -> Vec<usize> {    
+    struct ChildWithCosts {
+        child_id: usize,
+        cost_to_child: f64,
+        expected_cost_from_child: f64
+    }
+    
     // cluster children by target belief state
     let mut belief_to_children = BTreeMap::new();
     for &child_id in &graph.nodes[belief_node_id].children {
         let child = &graph.nodes[child_id];
 
+        let cost_to_child = cost_evaluator(&graph.nodes[belief_node_id].state, &child.state);
+
         belief_to_children.entry(child.belief_id).or_insert_with(Vec::new);
-        belief_to_children.get_mut(&child.belief_id).unwrap().push((child_id, expected_costs_to_goals[child_id]));
+        belief_to_children.get_mut(&child.belief_id).unwrap().push(
+            ChildWithCosts{
+                child_id,
+                cost_to_child,
+                expected_cost_from_child: expected_costs_to_goals[child_id]}
+            );
     }
 
     // choose the best for each belief state
     let mut best_children: Vec<usize> = Vec::new();
 
     for belief_id in belief_to_children.keys() {
-        let mut best_id = belief_to_children[belief_id][0].0;
+        let mut best_id = belief_to_children[belief_id][0].child_id;
         let p = transition_probability(&graph.nodes[belief_node_id].belief_state, &graph.nodes[best_id].belief_state);
 
         assert!(p > 0.0);
-        
-        let mut best_cost = p * belief_to_children[belief_id][0].1;
-        for (child_id, cost) in belief_to_children[belief_id].iter().skip(0) {
-            if p * *cost < best_cost {
-                best_cost = p * *cost;
-                best_id = *child_id;
+
+        let mut best_cost = f64::INFINITY;
+        for child_with_costs in belief_to_children[belief_id].iter() {
+            let cost = p * (child_with_costs.cost_to_child + child_with_costs.expected_cost_from_child);
+            if cost < best_cost {
+                best_cost = cost;
+                best_id = child_with_costs.child_id;
             }
         }
 
@@ -488,8 +501,9 @@ fn test_conditional_dijkstra_and_extract_policy_on_graph_1() {
 
     let graph = create_graph_1(&belief_states);
     
-    let dists = conditional_dijkstra(&graph, &vec![3, 10, 16], |a: &[f64; 2], b: &[f64; 2]| norm2(a, b) );
-    let policy = extract_policy(&graph, &dists);
+    let cost_evaluator = |a: &[f64; 2], b: &[f64; 2]| norm2(a, b);
+    let dists = conditional_dijkstra(&graph, &vec![3, 10, 16], &cost_evaluator);
+    let policy = extract_policy(&graph, &dists, &cost_evaluator);
 
     // distance decrease when going towards the goal
     assert!(dists[0] < dists[1]);
@@ -533,8 +547,9 @@ fn test_conditional_dijkstra_and_extract_policy_on_graph_2() {
 
     let graph = create_graph_2(&belief_states);
     
-    let dists = conditional_dijkstra(&graph, &vec![8, 17, 27], |a: &[f64; 2], b: &[f64; 2]| norm2(a, b) );
-    let policy = extract_policy(&graph, &dists);
+    let cost_evaluator = |a: &[f64; 2], b: &[f64; 2]| norm2(a, b);
+    let dists = conditional_dijkstra(&graph, &vec![8, 17, 27], &cost_evaluator);
+    let policy = extract_policy(&graph, &dists, &cost_evaluator);
 
     // dists
     let (max_index, max_dist) = dists.iter().enumerate()
