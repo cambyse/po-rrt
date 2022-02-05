@@ -2,6 +2,7 @@ use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64;
 use itertools::izip;
 
+#[derive(Clone)]
 pub struct ContinuousSampler<const N: usize> {
 	pub low: [f64; N],
 	pub up: [f64; N],
@@ -73,18 +74,33 @@ fn create_sample_space() {
 
 #[test]
 fn draw_sample() {
-		let mut space = ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]);
+	let mut space = ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]);
+	
+	for _ in 0..100 {
+			let s = space.sample();
 		
-		for _ in 0..100 {
-				let s = space.sample();
-			
-				for (v, l, u) in izip!(s.iter(), space.low.iter(), space.up.iter()) {
- 
-					assert!(l <= v);
-					assert!(v <= u);
-			}
+			for (v, l, u) in izip!(s.iter(), space.low.iter(), space.up.iter()) {
+
+				assert!(l <= v);
+				assert!(v <= u);
 		}
 	}
+}
+
+#[test]
+fn draw_sample_true_random() {
+	let mut space = ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]);
+	
+	for _ in 0..100 {
+			let s = space.sample();
+		
+			for (v, l, u) in izip!(s.iter(), space.low.iter(), space.up.iter()) {
+				println!("{}, {}, {}", v, l, u);
+				assert!(l <= v);
+				assert!(v <= u);
+		}
+	}
+}
 
 #[test]
 fn draw_discrete_sample() {
