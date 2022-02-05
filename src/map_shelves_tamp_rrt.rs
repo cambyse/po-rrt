@@ -1,3 +1,4 @@
+use bitvec::vec;
 use itertools::{all, enumerate, izip, merge, zip};
 
 use crate::common::*;
@@ -126,7 +127,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 			   n_it: 0}
 	}
 
-	pub fn plan(&mut self, &start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter: usize) -> Result<Vec<Vec<[f64; 2]>>, &'static str> {
+	pub fn plan(&mut self, &start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter: usize) -> Result<Policy<2>, &'static str> {
 		let mut solution_nodes = BTreeMap::new();
 		let mut q = PriorityQueue::new();
 
@@ -156,7 +157,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 		};
 
 		// rrt 
-		let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&self.map_shelves_domain});
+		let mut rrt = RRT::new(self.continuous_sampler.clone(), Funcs{m:&self.map_shelves_domain});
 
 		let mut best_expected_cost = std::f64::INFINITY;
 		let mut it = 0;
@@ -180,7 +181,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				v_belief_state = normalize_belief(&v_belief_state);
 				let reaching_probability = u.reaching_probability * transition_probability(&u.belief_state, &v_belief_state);
 
-				/// Query motion planner
+				// Query motion planner
 				// piece 1: go to target observe zone
 				let observation_goal = ObservationGoal{m: &self.map_shelves_domain, zone_id: *target_zone_id};
 				
@@ -238,6 +239,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				if u.expected_cost < best_expected_cost {
 					best_expected_cost = u.expected_cost;
 				}
+				println!("found solution with cost:{}", u.expected_cost);
 				solution_nodes.insert(OrderedFloat(u.expected_cost), u);
 			}
 		}
@@ -245,30 +247,122 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 		println!("it:{}, nodes:{}", it, search_tree.nodes.len());
 		println!("n leafs:{}", search_tree.nodes.iter().filter(|&n| n.remaining_zones.is_empty() ).count());
 
-		let (best_expected_cost, best_final_node) = solution_nodes.last_key_value().expect("No solution found!");
-		let path_tree = self.reconstruct_path_tree(&best_final_node, &search_tree);
+		let (best_expected_cost, best_final_node) = solution_nodes.first_key_value().expect("No solution found!");
+		let policy = self.build_policy(&best_final_node, &search_tree);
 
-		println!("expected costs:{}", best_expected_cost);
-		
-		Ok(path_tree)
+		println!("best expected costs before shortcut:{}", best_expected_cost);
+		println!("policy expected cost after shortcut:{}", policy.expected_costs);
+
+		Ok(policy)
+	}
+
+	fn shortcut(&self, path: &Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+		let mut short_cut_path = path.clone();
+
+		if short_cut_path.len() <= 2 {
+			return short_cut_path;
+		}
+
+		let mut sampler = DiscreteSampler::new();
+
+		fn interpolate(a: f64, b: f64, lambda: f64) -> f64 {
+			a * (1.0 - lambda) + b * lambda
+		}
+
+		let checker = Funcs{m:&self.map_shelves_domain};
+
+		let joint_dim = 2;
+		for _i in 0..100 {
+			let joint = sampler.sample(joint_dim);
+			let interval_start = sampler.sample(short_cut_path.len() - 2);
+			let interval_end = interval_start + 2 + sampler.sample(short_cut_path.len() - interval_start - 2);
+
+			assert!(interval_end < short_cut_path.len());
+			assert!(interval_end - interval_start >= 2);
+
+			let interval_start_state = &short_cut_path[interval_start];
+			let interval_end_state = &short_cut_path[interval_end];
+
+			// create shortcut states (interpolated on a particular joint)
+			let mut shortcut_states = vec![];
+			shortcut_states.reserve(interval_end - interval_start);
+			for j in interval_start..interval_end {
+				let lambda = (j - interval_start) as f64 / (interval_end - interval_start) as f64;
+				let mut shortcut_state = short_cut_path[j];
+				shortcut_state[joint] = interpolate(interval_start_state[joint], interval_end_state[joint], lambda);
+				shortcut_states.push(shortcut_state);
+			}
+
+			// check validities
+			let mut should_commit = true;
+			for (from, to) in pairwise_iter(&shortcut_states) {
+				should_commit = should_commit && checker.transition_validator(from, to); // TODO: can be optimized to avoid rechecking 2 times the nodes
+			}
+
+			// commit if valid
+			if should_commit {
+				for j in interval_start..interval_end {
+					short_cut_path[j] = shortcut_states[j - interval_start];
+				}
+			}
+		}
+
+		short_cut_path
+	}
+
+	pub fn build_policy(&self, leaf: &SearchNode, tree: &SearchTree) -> Policy<2> {
+
+		let node_path_to_last_leaf = self.get_search_nodes_to_last_leaf(leaf, tree);
+
+		let mut policy = Policy {
+			leafs: vec![],
+			nodes: vec![],
+			expected_costs: 0.0
+		};
+
+		let mut last_observation_node_id = 0;
+		for search_node in &node_path_to_last_leaf {
+			let mut previous_node_id = last_observation_node_id;
+
+			// observation path
+			let path_to_observation = self.shortcut(&search_node.path_to_observation);
+			for state in &path_to_observation {
+				let node_id = policy.add_node(state, &search_node.belief_state, 0, false);
+				if node_id != previous_node_id {
+					policy.add_edge(previous_node_id, node_id);
+				}
+				previous_node_id = node_id;
+			}
+			last_observation_node_id = previous_node_id;
+
+			// pick-up path
+			let path_to_pickup = self.shortcut(&search_node.path_to_pickup);
+			for (i, state) in path_to_pickup.iter().enumerate() {
+				let is_leaf = i == search_node.path_to_pickup.len() - 1;
+				let mut belief_state = search_node.belief_state.clone();
+				for i in 0..belief_state.len() {
+					if i != search_node.target_zone_id.unwrap() {
+						belief_state[i] = 0.0;
+					}
+				}
+				belief_state = normalize_belief(&belief_state);
+				let node_id = policy.add_node(state, &belief_state, 0, is_leaf);
+				if node_id != previous_node_id {
+					policy.add_edge(previous_node_id, node_id);
+				}
+				previous_node_id = node_id;
+			}
+		}
+
+		policy.compute_expected_costs_to_goals(&|a: &[f64;2], b: &[f64;2]| Funcs{m:&self.map_shelves_domain}.cost_evaluator(a, b));
+
+		policy
 	}
 
 	pub fn reconstruct_path_tree(&self, leaf: &SearchNode, tree: &SearchTree) -> Vec<Vec<[f64; 2]>> {
 		assert!(leaf.remaining_zones.is_empty());
 
-		// get node path to last leaf
-		let mut node_path_to_last_leaf: Vec<SearchNode> = vec![];
-
-		node_path_to_last_leaf.push(leaf.clone());
-
-		let mut current = leaf;
-		while let Some(parent_id) = current.parent {
-			let parent = &tree.nodes[parent_id];
-			node_path_to_last_leaf.push(parent.clone());
-
-			current = parent;
-		}
-		node_path_to_last_leaf = node_path_to_last_leaf.into_iter().rev().collect();
+		let node_path_to_last_leaf = self.get_search_nodes_to_last_leaf(leaf, tree);
 
 		println!("number of nodes:{}", node_path_to_last_leaf.len());
 
@@ -286,6 +380,23 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 
 		path_tree
 	}
+
+	fn get_search_nodes_to_last_leaf(&self, leaf: &SearchNode, tree: &SearchTree) ->  Vec<SearchNode> {
+		let mut node_path_to_last_leaf: Vec<SearchNode> = vec![];
+
+		node_path_to_last_leaf.push(leaf.clone());
+
+		let mut current = leaf;
+		while let Some(parent_id) = current.parent {
+			let parent = &tree.nodes[parent_id];
+			node_path_to_last_leaf.push(parent.clone());
+
+			current = parent;
+		}
+		node_path_to_last_leaf = node_path_to_last_leaf.into_iter().rev().collect();
+
+		node_path_to_last_leaf
+	}
 }
 
 #[cfg(test)]
@@ -301,15 +412,14 @@ fn test_plan_on_map2_pomdp() {
 	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);		
 	
 	let initial_belief_state = vec![1.0/2.0; 2];
-	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
-	let paths = path_tree.expect("nopath tree found!");
+	let policy = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
+	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_zones_observability();
-	for path in paths {
-		m2.draw_path(path.as_slice(), colors::BLACK);
-	}
+
+	m2.draw_policy(&policy);
 	m2.save("results/test_map1_2_goals_tamp_rrt");
 }
 
@@ -321,15 +431,16 @@ fn test_plan_on_map7() {
 	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &m);	
 	
 	let initial_belief_state = vec![1.0/6.0; 6];
-	let path_tree = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
-	let paths = path_tree.expect("nopath tree found!");
+	let policy = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 2500);
+	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_zones_observability();
-	for path in paths {
-		m2.draw_path(path.as_slice(), colors::BLACK);
-	}
+	m2.draw_policy(&policy);
+	//for path in paths {
+	//	m2.draw_path(path.as_slice(), colors::BLACK);
+	//}
 	m2.save("results/map7/test_map7_tamp_rrt");
 }
 
