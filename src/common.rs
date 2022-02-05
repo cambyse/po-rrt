@@ -34,7 +34,8 @@ pub struct PolicyNode<const N: usize> {
 #[derive(Clone)]
 pub struct Policy<const N: usize> {
 	pub nodes: Vec<PolicyNode<N>>,
-	pub leafs: Vec<usize>
+	pub leafs: Vec<usize>,
+	pub expected_costs: f64
 }
 
 impl<const N: usize> Policy<N> {
@@ -126,6 +127,51 @@ impl<const N: usize> Policy<N> {
 
 		(pieces, skeleton)
 	}
+
+	pub fn compute_expected_costs_to_goals(&mut self, cost_evaluator: &impl Fn(&[f64; N], &[f64; N]) -> f64) {
+		self.expected_costs = self.compute_expected_costs_to_goals_from(1.0, 0, cost_evaluator);
+	}
+
+	fn compute_expected_costs_to_goals_from(&self, p: f64, id: usize, cost_evaluator: &impl Fn(&[f64; N], &[f64; N]) -> f64) -> f64 {
+		let mut expected_future_costs = 0.0;
+
+		println!("id {}, p {}", id, p);
+
+		let node = &self.nodes[id];
+		for &child_id in &node.children {
+
+			let child = &self.nodes[child_id];
+			let q = transition_probability(&node.belief_state, &child.belief_state);
+			let cost = cost_evaluator(&node.state, &child.state);
+			
+			println!("  from {}, to {}, q {}, cost {}", id, child_id, q, cost);
+
+			expected_future_costs += p * q * cost + self.compute_expected_costs_to_goals_from(p * q, child_id, cost_evaluator);
+		} 
+
+		expected_future_costs
+	}
+
+	pub fn print(&self) {
+		for &leaf in &self.leafs {
+			let mut current = Some(leaf);
+
+			println!("[");
+
+			while let Some(current_id) = current {
+				let current_node = &self.nodes[current_id];
+				println!("({}, {}),", current_node.state[0], current_node.state[1]);
+				current = current_node.parent;
+			}
+			println!("],");
+		}
+	}
+
+}
+
+#[allow(clippy::style)]
+pub fn transition_probability(parent_bs: &BeliefState, child_bs: &BeliefState) -> f64 {
+    child_bs.iter().zip(parent_bs).fold(0.0, |s, (p, q)| s + if *p > 0.0 { *q } else { 0.0 } )
 }
 
 pub fn norm1<const N: usize>(a: &[f64; N], b: &[f64; N]) -> f64 {
@@ -317,6 +363,25 @@ pub fn heuristic_radius(n_nodes: usize, max_step: f64, search_radius: f64, dim: 
 	if s < max_step { s } else { max_step }*/
 }
 
+#[derive(Debug)]
+pub struct Statistics {
+	mean: f64,
+	std_dev: f64
+}
+
+pub fn compute_statistics(values: &[f64]) -> Statistics {
+	let sum = values.iter().fold(0.0, |s, v| s + v);
+	let mean = sum / values.len() as f64;
+	
+	let variance = values.iter().fold(0.0, |s, v| s + (v - mean).powf(2.0)) / (values.len() as f64);
+	let std_dev = variance.sqrt();
+
+	Statistics {
+		mean,
+		std_dev
+	}
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -358,7 +423,7 @@ fn test_policy_decomposition() {
 		0
 	*/
 	
-	let mut policy = Policy{nodes: vec![], leafs: vec![]};
+	let mut policy = Policy{nodes: vec![], leafs: vec![], expected_costs: 0.0};
 
 	policy.add_node(&[0.0, 0.0], &vec![0.5, 0.5], 0, false);
 
@@ -367,7 +432,7 @@ fn test_policy_decomposition() {
 	policy.add_node(&[0.0, 1.0], &vec![0.0, 1.0], 0, false); // 3
 
 	policy.add_node(&[-1.0, 2.0], &vec![1.0, 0.0], 0, false); // 4
-	policy.add_node(&[11.0, 2.0], &vec![0.0, 1.0], 0, false); // 5
+	policy.add_node(&[1.0, 2.0], &vec![0.0, 1.0], 0, false); // 5
 
 	policy.add_edge(0, 1);
 	policy.add_edge(1, 2);
@@ -382,6 +447,38 @@ fn test_policy_decomposition() {
 }
 
 #[test]
+fn test_policy_expected_cost_computation() {
+	/*     5
+	  4   /
+	   \ /
+		1, 2, 3
+		|
+		0
+	*/
+	let mut policy = Policy{nodes: vec![], leafs: vec![], expected_costs: 0.0};
+
+	policy.add_node(&[0.0, 0.0], &vec![0.4, 0.6], 0, false);
+
+	policy.add_node(&[0.0, 1.0], &vec![0.4, 0.6], 0, false); // 1
+	policy.add_node(&[0.0, 1.0], &vec![1.0, 0.0], 0, false); // 2
+	policy.add_node(&[0.0, 1.0], &vec![0.0, 1.0], 0, false); // 3
+
+	policy.add_node(&[-1.0, 2.0], &vec![1.0, 0.0], 0, false); // 4
+	policy.add_node(&[ 2.0, 3.0], &vec![0.0, 1.0], 0, false); // 5
+
+	policy.add_edge(0, 1);
+	policy.add_edge(1, 2);
+	policy.add_edge(1, 3);
+
+	policy.add_edge(2, 4);
+	policy.add_edge(3, 5);
+
+	policy.compute_expected_costs_to_goals(&|a: &[f64; 2], b: &[f64; 2]| norm2(a, b));
+
+	assert_eq!(policy.expected_costs, 1.0 + 0.4 * (2.0 as f64).sqrt() + 0.6 * 2.0 * (2.0 as f64).sqrt());
+}
+
+#[test]
 fn test_heuristic_radius() {
 	println!("1:{}", heuristic_radius(1, 0.1, 2.0, 2));
 	println!("10:{}", heuristic_radius(10, 0.1, 2.0, 2));
@@ -389,4 +486,31 @@ fn test_heuristic_radius() {
 	println!("1000:{}", heuristic_radius(1000, 0.1, 2.0, 2));
 	println!("10000:{}", heuristic_radius(10000, 0.1, 2.0, 2));
 }
+
+#[test]
+fn test_transitions() {
+    assert_eq!(transition_probability(&vec![1.0, 0.0], &vec![1.0, 0.0]), 1.0);
+    assert_eq!(transition_probability(&vec![0.0, 1.0], &vec![1.0, 0.0]), 0.0);
+
+    assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![0.4, 0.6]), 1.0);
+    assert_eq!(transition_probability(&vec![0.4, 0.6], &vec![1.0, 0.0]), 0.4);
+    assert_eq!(transition_probability(&vec![0.5, 0.0, 0.5, 0.0], &vec![0.0, 0.5, 0.0, 0.5]), 0.0);
+}
+
+#[test]
+fn test_statistics() {
+	let stats = compute_statistics(&vec![1.0, 1.0, 1.0]);
+
+	assert_eq!(stats.mean, 1.0);
+	assert_eq!(stats.std_dev, 0.0);
+
+	// mean ony
+	let stats = compute_statistics(&vec![-1.0, 0.0, 1.0]);
+	assert_eq!(stats.mean, 0.0);
+
+	// std dev
+	let stats = compute_statistics(&vec![1.0, 3.0, 5.0, 7.0]);
+	assert!((stats.std_dev - 2.23).abs() < 0.1);
+}
+
 }
