@@ -58,7 +58,8 @@ use colors::*;
 #[derive(Debug, PartialEq)]
 pub enum Belief {
 	Free,
-	Obstacle
+	LowObstacle, // observation through it still possible!
+	HighObstacle
 }
 
 #[derive(Clone)]
@@ -146,14 +147,19 @@ impl MapShelfDomain {
 		}
 	}
 
+	pub fn pixel_to_occupation(&self, pixel: u8) -> Belief {
+		match pixel {
+			255 => Belief::Free,
+			127..255 => Belief::LowObstacle,
+			_ => Belief::HighObstacle,
+		}
+	}
+
 	pub fn is_state_valid(&self, xy: &[f64; 2]) -> Belief {
 		let ij = self.to_pixel_coordinates(&*xy);
 		let p = self.img.get_pixel(ij[1], ij[0]);
 
-		match p[0] {
-			0 => Belief::Obstacle,
-			_ => Belief::Free,
-		}
+		self.pixel_to_occupation(p[0])
 	}
 
 	fn to_pixel_coordinates(&self, xy: &[f64; 2]) -> [u32; 2] {
@@ -185,12 +191,15 @@ impl MapShelfDomain {
 		let a = (a_ij[0] as i32, a_ij[1] as i32);
 		let b = (b_ij[0] as i32, b_ij[1] as i32);
 
+		let mut lowest_pixel: u8 = 255;
+
 		for (i, j) in line_drawing::Bresenham::new(a, b) {
 			let pixel = self.img.get_pixel(j as u32, i as u32);
-			if pixel[0] == 0 { return Belief::Obstacle; }
+			lowest_pixel = u8::min(lowest_pixel, pixel[0]);
+			if lowest_pixel == 0 { return Belief::HighObstacle; }
 		}
 
-		Belief::Free
+		self.pixel_to_occupation(lowest_pixel)
 	}
 
 	#[allow(clippy::style)]
@@ -249,7 +258,7 @@ impl MapShelfDomain {
 
 	pub fn is_zone_observable(&self, state: &[f64; 2], zone_id: usize) -> bool {
 		if norm2(state, &self.zone_positions[zone_id]) < self.visibility_distance {
-			return self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::Obstacle;
+			return self.get_traversed_space(&state, &self.zone_positions[zone_id]) != Belief::HighObstacle;
 		}
 
 		false
@@ -451,7 +460,7 @@ impl PRMFuncs<2> for MapShelfDomain {
 	fn state_validity(&self, state: &[f64; 2]) -> Option<usize> {
 		match self.is_state_valid(state) {
 			Belief::Free => {Some(self.world_validities.len() - 1)},
-			Belief::Obstacle => None
+			_ => None
 		}
 	}
 
@@ -470,7 +479,7 @@ impl PRMFuncs<2> for MapShelfDomain {
 
 		match geometric_validitiy {
 			Belief::Free => {Some(self.world_validities.len() - 1)},
-			Belief::Obstacle => None
+			_ => None
 		}
 	}
 
@@ -554,7 +563,7 @@ fn test_valid_state() {
 #[test]
 fn test_invalid_state() {
 	let m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	assert_eq!(m.is_state_valid(&[0.9, 0.0]), Belief::Obstacle);
+	assert_eq!(m.is_state_valid(&[0.9, 0.0]), Belief::HighObstacle);
 }
 
 // MAP 2 zone
@@ -654,13 +663,12 @@ fn test_traversed_zone() {
 	map.add_zones("data/map1_2_goals_zone_ids.pgm", 0.1);
 	
 	let space = map.get_traversed_space(&[0.68, -0.45], &[0.68, 0.38]);
-	assert_eq!(space, Belief::Obstacle);
+	assert_eq!(space, Belief::HighObstacle);
 
 	let space = map.get_traversed_space(&[0.0, -0.45], &[0.0, 0.38]);
 	assert_eq!(space, Belief::Free);
 }
 
-// test MAP 5
 #[test]
 fn test_map_5_construction() {
 	let mut map = MapShelfDomain::open("data/map5.pgm", [-1.0, -1.0], [1.0, 1.0]);
