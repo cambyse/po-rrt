@@ -3,6 +3,7 @@
 #![feature(vec_into_raw_parts)]
 #![feature(let_chains)]
 #![feature(map_first_last)]
+#![feature(exclusive_range_pattern)]
 
 pub mod common;
 pub mod sample_space;
