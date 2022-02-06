@@ -186,7 +186,7 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
 
 				for child_belief_state in &children_belief_states {
-					if belief_state != child_belief_state {
+					if hash(belief_state) != hash(child_belief_state) {
 						// debug
 						//let p = transition_probability(&belief_state, &child_belief_state);
 						//assert!(p > 0.0);
