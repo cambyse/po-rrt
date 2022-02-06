@@ -13,14 +13,56 @@ use po_rrt::{
 };
 use bitvec::prelude::*;
 use std::time::Instant;
+use std::fs::File;
+use std::io::Write;
 
 fn main()
 {
 	let n_runs = 10;
 
-	let prm_iter_min = 1000;
+	let prm_iter_min = 5000;
 	let rrt_iter_min = 2500;
 
+	let mut w = File::create("results/map_benchmark/costs_and_timings.txt").unwrap();
+
+	for m in vec![2, 4, 6, 8] {
+		let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = 
+		match m {
+			2 => (0..n_runs).map(|_| test_plan_on_map1_2_goals(prm_iter_min)).unzip(),
+			4 => (0..n_runs).map(|_| test_plan_on_map_benchmark_4_goals(prm_iter_min)).unzip(),
+			6 => (0..n_runs).map(|_| test_plan_on_map_benchmark_6_goals(prm_iter_min)).unzip(),
+			8 => (0..n_runs).map(|_| test_plan_on_map_benchmark_8_goals(prm_iter_min)).unzip(),
+			_ => panic!("no bencmark function for it!")
+		};
+
+		let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) =
+		match m {
+			2 => (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_2_goals(rrt_iter_min)).unzip(),
+			4 => (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_4_goals(rrt_iter_min)).unzip(),
+			6 => (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_6_goals(rrt_iter_min)).unzip(),
+			8 => (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_8_goals(rrt_iter_min)).unzip(),
+			_ => panic!("no bencmark function for it!")
+		};
+
+		println!("PRM --- {} goals", m);
+		println!("costs: {:?}", compute_statistics(&prm_costs));
+		println!("planning_times: {:?}", compute_statistics(&prm_planning_times));
+
+		println!("RRT* --- {} goals", m);
+		println!("costs: {:?}", compute_statistics(&rrt_costs));
+		println!("planning_times: {:?}", compute_statistics(&rrt_planning_times));
+
+		writeln!(&mut w, "PRM --- {} goals", m).unwrap();
+		writeln!(&mut w, "costs: {:?}", compute_statistics(&prm_costs)).unwrap();
+		writeln!(&mut w, "planning_times: {:?}", compute_statistics(&prm_planning_times)).unwrap();
+		writeln!(&mut w, "\n").unwrap();
+
+		writeln!(&mut w, "RRT* --- {} goals", m).unwrap();
+		writeln!(&mut w, "costs: {:?}", compute_statistics(&rrt_costs)).unwrap();
+		writeln!(&mut w, "planning_times: {:?}", compute_statistics(&rrt_planning_times)).unwrap();
+		writeln!(&mut w, "\n").unwrap();
+		writeln!(&mut w, "\n").unwrap();
+	}
 	//let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map1_2_goals(prm_iter_min)).unzip();
 	//let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map1_2_goals(rrt_iter_min)).unzip();
 
@@ -37,18 +79,22 @@ fn main()
 	//let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_6_goals(rrt_iter_min)).unzip();
 
 	// 8 goals
-	let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map_benchmark_8_goals(prm_iter_min)).unzip();
+	//let (prm_planning_times, prm_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_on_map_benchmark_8_goals(prm_iter_min)).unzip();
 	//let (rrt_planning_times, rrt_costs): (Vec<f64>, Vec<f64>) = (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_8_goals(rrt_iter_min)).unzip();
 
-	println!("PRM");
+	//println!("PRM");
 	//println!("prm_costs all: {:?}", prm_costs);
-	println!("planning_times: {:?}", compute_statistics(&prm_planning_times));
-	println!("costs: {:?}", compute_statistics(&prm_costs));
+	//println!("planning_times: {:?}", compute_statistics(&prm_planning_times));
+	//println!("costs: {:?}", compute_statistics(&prm_costs));
 	
 	//println!("RRT*");
 	//println!("rrt_costs all: {:?}", rrt_costs);
 	//println!("planning_times: {:?}", compute_statistics(&rrt_planning_times));
 	//println!("costs: {:?}", compute_statistics(&rrt_costs));
+
+	//writeln!(&mut w, "PRM").unwrap();
+    //writeln!(&mut w, "planning_times: {:?}", compute_statistics(&prm_planning_times)).unwrap();
+	//writeln!(&mut w, "costs: {:?}", compute_statistics(&prm_costs)).unwrap();
 }
 
 fn normalize_belief(unnormalized_belief_state: &BeliefState) -> BeliefState {
@@ -529,7 +575,7 @@ fn test_plan_tamp_rrt_on_map_benchmark_6_goals(n_iter_min: usize) -> (f64, f64) 
 // 8 goals
 fn test_plan_on_map_benchmark_8_goals(n_iter_min: usize) -> (f64, f64) {
 	let mut m = MapShelfDomain::open("data/map_benchmark.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map_benchmark_8_goals_zone_ids.pgm", 0.25);
+	m.add_zones("data/map_benchmark_8_goals_zone_ids.pgm", 0.5);
 
 	let goal = SquareGoal::new(vec![([-0.9,-0.5], bitvec![1, 0, 0, 0, 0, 0, 0, 0]),
 									([-0.9, 0.0], bitvec![0, 1, 0, 0, 0, 0, 0, 0]),
@@ -573,7 +619,7 @@ fn test_plan_on_map_benchmark_8_goals(n_iter_min: usize) -> (f64, f64) {
 
 fn test_plan_tamp_rrt_on_map_benchmark_8_goals(n_iter_min: usize) -> (f64, f64) {
 	let mut m = MapShelfDomain::open("data/map_benchmark.pgm", [-1.0, -1.0], [1.0, 1.0]);
-	m.add_zones("data/map_benchmark_8_goals_zone_ids.pgm", 0.4);
+	m.add_zones("data/map_benchmark_8_goals_zone_ids.pgm", 0.5);
 
 	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new_true_random(), &m, 0.05);	
 	
