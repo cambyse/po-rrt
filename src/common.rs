@@ -310,7 +310,7 @@ impl<const N: usize> SquareGoal<N> {
 		}
 
 		Self{
-			goal_to_validity: goal_to_validity,
+			goal_to_validity,
 			world_to_goal,
 			max_dist
 		}

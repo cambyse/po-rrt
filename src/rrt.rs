@@ -165,12 +165,10 @@ impl<'a, F: RTTFuncs<N>, const N: usize> RRT<'a, F, N> {
 	}
 
 	fn sample(&mut self, goal: &impl GoalFuncs<N>, iteration: usize) -> [f64; N] {
-		let new_state = match iteration % 100 {
+		match iteration % 100 {
 			0 => goal.goal_example(0),
 			_ => self.sample_space.sample()
-		};
-
-		new_state
+		}
 	}
 
 	fn get_best_solution(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize]) -> Result<(Vec<[f64; N]>, f64), &str> {

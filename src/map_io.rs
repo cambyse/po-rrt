@@ -367,7 +367,7 @@ impl Map {
 		}
 	}
 
-	pub fn draw_refinment_trees(&mut self, refinment_trees: &Vec<RefinmentTree<2>>) {
+	pub fn draw_refinment_trees(&mut self, refinment_trees: &[RefinmentTree<2>]) {
 		for tree in refinment_trees.iter().skip(0) {
 			self.draw_refinment_tree(tree);
 			//break;

@@ -221,7 +221,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				
 				let (observation_planning_result, _) = rrt.plan(u.observation_state, &observation_goal, max_step, search_radius, n_iter_min, n_iter_max);
 				let (observation_path, observation_path_cost) = observation_planning_result.expect("no observation path found!");
-				let v_observation_state = observation_path.last().unwrap().clone();
+				let v_observation_state = *observation_path.last().unwrap();
 
 				// piece 2: object is here: plan to reach goal corresponding to 
 				let zone_position = self.map_shelves_domain.get_zone_positions()[*target_zone_id];
@@ -229,7 +229,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 
 				let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, max_step, search_radius, n_iter_min, n_iter_max);
 				let (pickup_path, pickup_path_cost) = pickup_planning_result.expect("no pickup path found!");
-				let v_pickup_state = pickup_path.last().unwrap().clone();
+				let v_pickup_state = *pickup_path.last().unwrap();
 
 				// compute expected cost to start
 				let pickup_probability = v_belief_state[*target_zone_id];
@@ -350,7 +350,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				
 				let (observation_planning_result, _) = rrt.plan(u.observation_state, &observation_goal, max_step, search_radius, n_iter_min, n_iter_max);
 				let (observation_path, observation_path_cost) = observation_planning_result.expect("no observation path found!");
-				let v_observation_state = observation_path.last().unwrap().clone();
+				let v_observation_state = *observation_path.last().unwrap();
 
 				// piece 2: object is here: plan to reach goal corresponding to 
 				let zone_position = self.map_shelves_domain.get_zone_positions()[*target_zone_id];
@@ -358,7 +358,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 
 				let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, max_step, search_radius, n_iter_min, n_iter_max);
 				let (pickup_path, pickup_path_cost) = pickup_planning_result.expect("no pickup path found!");
-				let v_pickup_state = pickup_path.last().unwrap().clone();
+				let v_pickup_state = *pickup_path.last().unwrap();
 
 				// compute expected cost to start
 				let pickup_probability = v_belief_state[*target_zone_id];
@@ -504,9 +504,9 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 			for (i, state) in path_to_pickup.iter().enumerate() {
 				let is_leaf = i == search_node.path_to_pickup.len() - 1;
 				let mut belief_state = search_node.belief_state.clone();
-				for i in 0..belief_state.len() {
+				for (i, p) in belief_state.iter_mut().enumerate() {
 					if i != search_node.target_zone_id.unwrap() {
-						belief_state[i] = 0.0;
+						*p = 0.0;
 					}
 				}
 				belief_state = normalize_belief(&belief_state);
@@ -536,7 +536,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 		path_tree.push(vec![]);
 		for current in &node_path_to_last_leaf {
 			for p in &current.path_to_observation {
-				path_tree[0].push(p.clone());
+				path_tree[0].push(*p);
 			}
 
 			path_tree.push(current.path_to_pickup.clone());
