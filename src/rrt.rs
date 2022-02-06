@@ -73,13 +73,13 @@ pub trait RTTFuncs<const N: usize> {
 	}
 }
 
-pub struct RRT<F: RTTFuncs<N>, const N: usize> {
+pub struct RRT<'a, F: RTTFuncs<N>, const N: usize> {
 	sample_space: ContinuousSampler<N>,
-	fns: F,
+	fns: &'a F,
 }
 
-impl<F: RTTFuncs<N>, const N: usize> RRT<F, N> {
-	pub fn new(sample_space: ContinuousSampler<N>, fns: F) -> Self {
+impl<'a, F: RTTFuncs<N>, const N: usize> RRT<'a, F, N> {
+	pub fn new(sample_space: ContinuousSampler<N>, fns: &'a F) -> Self {
 		Self { sample_space, fns }
 	}
 
@@ -204,7 +204,7 @@ fn test_plan_empty_space() {
 
 	let goal = SquareGoal::new(vec![([0.9, 0.9], bitvec![1])], 0.05);
 
-	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{});
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &Funcs{});
 
 	let (result, _) = rrt.plan([0.0, 0.0], &goal, 0.1, 1.0, 1000, 10000);
 	let (path_result, _cost) = result.expect("No path found!");
@@ -232,8 +232,9 @@ fn test_plan_on_map7_prefefined_goal() {
 	}
 
 	let goal = SquareGoal::new(vec![([0.9, -0.5], bitvec![1])], 0.05);
-
-	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
+	
+	let checker = Funcs{m:&m};
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &checker);
 
 	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500, 10000);
 	let (path_result, _cost) = result.expect("No path found!");
@@ -287,7 +288,8 @@ fn test_plan_on_map7_observation_point() {
 
 	let goal = ObservationGoal{m: &m, zone_id: 2};
 
-	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), Funcs{m:&m});
+	let checker = Funcs{m:&m};
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &checker);
 
 	let (result, rrttree) = rrt.plan([0.0, -0.8], &goal, 0.1, 2.0, 2500, 10000);
 	let (path_result, _cost) = result.expect("No path found!");
