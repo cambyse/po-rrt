@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use po_rrt::common::*;
-use po_rrt::prm::*;
+use po_rrt::pto::*;
 use po_rrt::sample_space::*;
 use po_rrt::map_io::*;
 use bitvec::prelude::*;
@@ -8,7 +8,7 @@ use bitvec::prelude::*;
 
 fn prm_map(m: &Map, min_iter: usize) {
 	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   m);
 

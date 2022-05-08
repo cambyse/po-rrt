@@ -93,10 +93,10 @@ impl<'a, F: RTTFuncs<N>, const N: usize> RRT<'a, F, N> {
 	}
 
 	pub fn plan_several(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
-		max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize, solution_ratio: f64, sampler: &mut DiscreteSampler) -> (Vec<(Vec<[f64; N]>, f64)>, RRTTree<N>) {
+		max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> (Vec<(Vec<[f64; N]>, f64)>, RRTTree<N>) {
 		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_min, n_iter_max);
 
-		(self.get_solutions(&rrttree, &final_node_ids, solution_ratio, sampler), rrttree)
+		(self.get_solutions(&rrttree, &final_node_ids), rrttree)
 	}
 
 	fn grow_tree(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
@@ -192,7 +192,7 @@ impl<'a, F: RTTFuncs<N>, const N: usize> RRT<'a, F, N> {
 			.ok_or("No solution found")
 	}
 
-	fn get_solutions(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize], solution_ratio: f64, sampler: &mut DiscreteSampler) -> Vec<(Vec<[f64; N]>, f64)> {
+	fn get_solutions(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize]) -> Vec<(Vec<[f64; N]>, f64)> {
 		// solution_ratio: ratio of solutions to keep
 
 		let firstly_final_node_ids = self.get_firstly_final_node_ids(rrttree, final_node_ids);
@@ -401,7 +401,7 @@ fn test_plan_on_map7_observation_point_multiple_solutions() {
 	let checker = Funcs{m:&m};
 	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &checker);
 
-	let (path_results, rrttree) = rrt.plan_several([0.0, -0.8], &goal, 0.1, 2.0, 2500, 10000, 0.2, &mut DiscreteSampler::new());
+	let (path_results, rrttree) = rrt.plan_several([0.0, -0.8], &goal, 0.1, 2.0, 2500, 10000);
 
 	assert!(path_results.len() > 2); // why do we need to clone?!
 

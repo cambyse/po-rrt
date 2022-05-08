@@ -4,12 +4,12 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::map_io::*; // tests only
 use crate::map_shelves_io::*; // tests only
-use crate::prm_graph::*;
+use crate::pto_graph::*;
 use std::collections::HashSet;
-use crate::prm_reachability::*;
+use crate::pto_reachability::*;
 use crate::belief_graph::*;
 use crate::sample_space::*;
-use crate::prm::*;
+use crate::pto::*;
 use queues::*;
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
@@ -64,7 +64,7 @@ impl<'a, const N: usize> RefinmentTree<N> {
 	}
 }
 
-pub struct PRMPolicyRefiner <'a, F: PRMFuncs<N>, const N: usize> {
+pub struct PTOPolicyRefiner <'a, F: PTOFuncs<N>, const N: usize> {
 	pub policy: &'a Policy<N>,
 	pub fns: &'a F,
 	pub belief_graph: &'a BeliefGraph<N>,
@@ -73,7 +73,7 @@ pub struct PRMPolicyRefiner <'a, F: PRMFuncs<N>, const N: usize> {
 	pub refinement_s: f64
 }
 
-impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {	
+impl <'a, F: PTOFuncs<N>, const N: usize> PTOPolicyRefiner<'a, F, N> {	
 	pub fn new(policy: &'a Policy<N>, fns: &'a F, belief_graph: &'a BeliefGraph<N>) -> Self {
 		Self{
 			policy,
@@ -397,14 +397,14 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 		let to_validity = self.fns.state_validity(to);
 		
 		if let (Some(from_validity_id), Some(to_validity_id)) = (from_validity, to_validity) {
-			let from_node = PRMNode{
+			let from_node = PTONode{
 				state: *from,
 				validity_id: from_validity_id,
 				parents: vec![],
 				children: vec![]
 			};
 
-			let to_node = PRMNode{
+			let to_node = PTONode{
 				state: *to,
 				validity_id: to_validity_id,
 				parents: vec![],
@@ -434,7 +434,7 @@ mod tests {
 
 		let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
-		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 							DiscreteSampler::new(),
 							&m);
 
@@ -442,7 +442,7 @@ mod tests {
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let mut policy_refiner = PTOPolicyRefiner::new(&policy, &m, &prm.belief_graph);
 		let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(500));
 		
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
@@ -463,7 +463,7 @@ mod tests {
 		m.add_zones("data/map4_zone_ids.pgm", 0.15);
 	
 		let goal = SquareGoal::new(vec![([-0.55, 0.9], bitvec![1; 16])], 0.05);
-		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 							   DiscreteSampler::new(),
 							   &m);
 	
@@ -471,7 +471,7 @@ mod tests {
 		prm.print_summary();
 		let policy = prm.plan_belief_space( &vec![1.0/16.0; 16]);
 	
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let mut policy_refiner = PTOPolicyRefiner::new(&policy, &m, &prm.belief_graph);
 		let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(1500));
 		
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
@@ -493,7 +493,7 @@ mod tests {
 
 		let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
-		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 							DiscreteSampler::new(),
 							&m);
 
@@ -501,7 +501,7 @@ mod tests {
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let mut policy_refiner = PTOPolicyRefiner::new(&policy, &m, &prm.belief_graph);
 		let (refined_policy, trees) = policy_refiner.refine_solution(RefinmentStrategy::Reparent(0.3));
 		
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
@@ -525,7 +525,7 @@ mod tests {
 										([-0.7, 0.14], bitvec![0, 0, 1])],
 										0.05);
 
-		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 							DiscreteSampler::new(),
 							&m);
 
@@ -534,7 +534,7 @@ mod tests {
 
 		let policy = prm.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
 
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let mut policy_refiner = PTOPolicyRefiner::new(&policy, &m, &prm.belief_graph);
 		let (refined_policy, trees) = policy_refiner.refine_solution(RefinmentStrategy::Reparent(0.3));
 
 		assert_eq!(policy.leafs.len(), refined_policy.leafs.len());
@@ -557,7 +557,7 @@ mod tests {
 		let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
 										([0.68, 0.38], bitvec![0, 1])], 0.05);
 	
-		let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+		let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 							DiscreteSampler::new(),
 							&m);
 		
@@ -567,7 +567,7 @@ mod tests {
 		let initial_belief_state = vec![1.0/2.0; 2];
 	
 		let policy = prm.plan_belief_space(&initial_belief_state);
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &m, &prm.belief_graph);
+		let mut policy_refiner = PTOPolicyRefiner::new(&policy, &m, &prm.belief_graph);
 		let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(1500));
 		
 		let mut m2 = m.clone();

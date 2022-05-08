@@ -20,105 +20,105 @@ use minilp::{ComparisonOp, OptimizationDirection, Problem, Variable};
 /***************************IO*****************************/
 
 #[derive(Serialize, Deserialize)]
-pub struct SerializablePRMNode {
+pub struct SerializablePTONode {
 	pub state: Vec<f64>,
 	pub validity_id: usize,
-	pub parents: Vec<SerializablePRMEdge>,
-	pub children: Vec<SerializablePRMEdge>
+	pub parents: Vec<SerializablePTOEdge>,
+	pub children: Vec<SerializablePTOEdge>
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct SerializablePRMEdge {
+pub struct SerializablePTOEdge {
 	pub id: usize,
 	pub validity_id: usize,
 }
 
-impl SerializablePRMEdge {
+impl SerializablePTOEdge {
 	#[allow(clippy::nonminimal_bool)]
-	pub fn from_prm_edge(edge : &PRMEdge) -> Self {
+	pub fn from_pto_edge(edge : &PTOEdge) -> Self {
 		Self{
 			id: edge.id,			
 			validity_id: edge.validity_id,
 		}
 	}
 
-	pub fn to_prm_edge(&self) -> PRMEdge {
-		PRMEdge {
+	pub fn to_pto_edge(&self) -> PTOEdge {
+		PTOEdge {
 			id: self.id,
 			validity_id: self.validity_id,
 		}
 	}
 }
 
-impl SerializablePRMNode {
+impl SerializablePTONode {
 	#[allow(clippy::nonminimal_bool)]
-	pub fn from_prm_node(node : &PRMNode<2>) -> Self {
+	pub fn from_pto_node(node : &PTONode<2>) -> Self {
 		Self{
 			state: node.state.to_vec(),			
 			validity_id: node.validity_id,
-			parents: node.parents.iter().map(|edge| SerializablePRMEdge::from_prm_edge(edge)).collect(),
-			children: node.children.iter().map(|edge| SerializablePRMEdge::from_prm_edge(edge)).collect()
+			parents: node.parents.iter().map(|edge| SerializablePTOEdge::from_pto_edge(edge)).collect(),
+			children: node.children.iter().map(|edge| SerializablePTOEdge::from_pto_edge(edge)).collect()
 		}
 	}
 
-	pub fn to_prm_node(&self) -> PRMNode<2> {
-		PRMNode {
+	pub fn to_pto_node(&self) -> PTONode<2> {
+		PTONode {
 			state: self.state.clone().try_into().unwrap(),
 			validity_id: self.validity_id,
-			parents: self.parents.iter().map(|edge| SerializablePRMEdge::to_prm_edge(edge)).collect(),
-			children: self.children.iter().map(|edge| SerializablePRMEdge::to_prm_edge(edge)).collect(),
+			parents: self.parents.iter().map(|edge| SerializablePTOEdge::to_pto_edge(edge)).collect(),
+			children: self.children.iter().map(|edge| SerializablePTOEdge::to_pto_edge(edge)).collect(),
 		}
 	}
 }
 
 
 #[derive(Serialize, Deserialize)]
-pub struct SerializablePRMGraph {
-	pub nodes: Vec<SerializablePRMNode>,
+pub struct SerializablePTOGraph {
+	pub nodes: Vec<SerializablePTONode>,
 	pub validities: Vec<Vec<bool>>
 }
 
-impl SerializablePRMGraph {
-	pub fn from_prm_graph_(prm_graph: &PRMGraph<2>) -> SerializablePRMGraph {
-		let nodes = &prm_graph.nodes;
-		SerializablePRMGraph {
-			nodes: nodes.iter().map(|node| SerializablePRMNode::from_prm_node(&node)).collect(),
-			validities: prm_graph.validities.iter().map(|validity| SerializablePRMGraph::from_prm_validity(&validity) ).collect()
+impl SerializablePTOGraph {
+	pub fn from_pto_graph_(pto_graph: &PTOGraph<2>) -> SerializablePTOGraph {
+		let nodes = &pto_graph.nodes;
+		SerializablePTOGraph {
+			nodes: nodes.iter().map(|node| SerializablePTONode::from_pto_node(&node)).collect(),
+			validities: pto_graph.validities.iter().map(|validity| SerializablePTOGraph::from_pto_validity(&validity) ).collect()
 		}
 	}
 
 	pub fn save_(&self, filename: &str) {
 		let writer = BufWriter::new(File::create(filename).expect("can't create file"));
-		serde_json::to_writer_pretty(writer, &self).expect("error happened while dumping prm graph to file");
+		serde_json::to_writer_pretty(writer, &self).expect("error happened while dumping pto graph to file");
 	}
 
 	#[allow(clippy::nonminimal_bool)]
-	pub fn from_prm_validity(validity: &WorldMask) -> Vec<bool> {
+	pub fn from_pto_validity(validity: &WorldMask) -> Vec<bool> {
 		validity.iter().map(|b| !!b).collect()
 	}
 
-	pub fn convert_to_prm_validity(validity: &[bool]) -> WorldMask {
+	pub fn convert_to_pto_validity(validity: &[bool]) -> WorldMask {
 		validity.iter().collect()
 	}
 }
 
-pub fn save(prm_graph: &PRMGraph<2>, filename: &str) {
-	let graph = SerializablePRMGraph::from_prm_graph_(prm_graph);
+pub fn save(pto_graph: &PTOGraph<2>, filename: &str) {
+	let graph = SerializablePTOGraph::from_pto_graph_(pto_graph);
 	graph.save_(filename);
 }
 
-pub fn load(filename: &str) -> PRMGraph<2> {
+pub fn load(filename: &str) -> PTOGraph<2> {
 	let reader = BufReader::new(File::open(filename).expect("impossible to open file"));
-	let graph: SerializablePRMGraph = serde_json::from_reader(reader).unwrap();
+	let graph: SerializablePTOGraph = serde_json::from_reader(reader).unwrap();
 
-	PRMGraph {
-		nodes: graph.nodes.into_iter().map(|node| node.to_prm_node()).collect(),
-		validities: graph.validities.iter().map(|validity| SerializablePRMGraph::convert_to_prm_validity(validity)).collect()
+	PTOGraph {
+		nodes: graph.nodes.into_iter().map(|node| node.to_pto_node()).collect(),
+		validities: graph.validities.iter().map(|validity| SerializablePTOGraph::convert_to_pto_validity(validity)).collect()
 	}
 }
 
-/****************************PRM Graph******************************/
-pub trait PRMFuncs<const N: usize> {
+/****************************PTO Graph******************************/
+pub trait PTOFuncs<const N: usize> {
 	fn n_worlds(&self) -> usize {
 		1
 	}
@@ -127,7 +127,7 @@ pub trait PRMFuncs<const N: usize> {
 		None
 	}
 
-	fn transition_validator(&self, from: &PRMNode<N>, to: &PRMNode<N>) -> Option<usize> {
+	fn transition_validator(&self, from: &PTONode<N>, to: &PTONode<N>) -> Option<usize> {
 		//let validity = from.validity.iter().zip(&to.validity)
 		//.any(|(a, b)| *a && *b);
 
@@ -168,42 +168,42 @@ pub trait PRMFuncs<const N: usize> {
 }
 
 #[derive(Clone)]
-pub struct PRMNode<const N: usize> {
+pub struct PTONode<const N: usize> {
 	pub state: [f64; N],
 	pub validity_id: usize,
-	pub parents: Vec<PRMEdge>,
-	pub children: Vec<PRMEdge>,
+	pub parents: Vec<PTOEdge>,
+	pub children: Vec<PTOEdge>,
 }
 
 #[derive(Clone)]
-pub struct PRMEdge {
+pub struct PTOEdge {
 	pub id: usize,
 	pub validity_id: usize
 }
 
-impl<const N: usize> GraphNode<N> for PRMNode<N> {
+impl<const N: usize> GraphNode<N> for PTONode<N> {
 	fn state(&self) -> &[f64; N] {
 		&self.state
 	}
 }
 
 #[derive(Clone)]
-pub struct PRMGraph<const N: usize> {
-	pub nodes: Vec<PRMNode<N>>,
+pub struct PTOGraph<const N: usize> {
+	pub nodes: Vec<PTONode<N>>,
 	pub validities: Vec<WorldMask>,
 }
 
-impl<const N: usize> PRMGraph<N> {
+impl<const N: usize> PTOGraph<N> {
 	pub fn add_node(&mut self, state: [f64; N], state_validity_id: usize) -> usize {
 		let id = self.nodes.len();
-		let node = PRMNode { state, validity_id: state_validity_id, parents: Vec::new(), children: Vec::new() };
+		let node = PTONode { state, validity_id: state_validity_id, parents: Vec::new(), children: Vec::new() };
 		self.nodes.push(node);
 		id
 	}
 
 	pub fn add_edge(&mut self, from_id: usize, to_id: usize, validity_id: usize) {
-		self.nodes[from_id].children.push(PRMEdge{id: to_id, validity_id});
-		self.nodes[to_id].parents.push(PRMEdge{id:from_id, validity_id});
+		self.nodes[from_id].children.push(PTOEdge{id: to_id, validity_id});
+		self.nodes[to_id].parents.push(PTOEdge{id:from_id, validity_id});
 	}
 
 	pub fn add_bi_edge(&mut self, id1: usize, id2: usize, validity_id: usize) {
@@ -227,7 +227,7 @@ impl<const N: usize> PRMGraph<N> {
 	}
 }
 
-impl<const N: usize> Graph<N> for PRMGraph<N> {
+impl<const N: usize> Graph<N> for PTOGraph<N> {
 	fn node(&self, id:usize) -> &dyn GraphNode<N> {
 		&self.nodes[id]
 	}
@@ -242,12 +242,12 @@ impl<const N: usize> Graph<N> for PRMGraph<N> {
 	}
 }
 
-pub struct PRMGraphWorldView<'a, const N: usize> {
-	pub graph: &'a PRMGraph<N>,
+pub struct PTOGraphWorldView<'a, const N: usize> {
+	pub graph: &'a PTOGraph<N>,
 	pub world: usize
 }
 
-impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
+impl<'a, const N: usize> Graph<N> for PTOGraphWorldView<'a, N> {
 	fn node(&self, id:usize) -> &dyn GraphNode<N> {
 		self.graph.node(id)
 	}
@@ -272,7 +272,7 @@ impl<'a, const N: usize> Graph<N> for PRMGraphWorldView<'a, N> {
 
 /****************************Dijkstra******************************/
 
-pub fn dijkstra<F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_node_ids: &[usize], m: &F) -> Vec<f64> {
+pub fn dijkstra<F: PTOFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_node_ids: &[usize], m: &F) -> Vec<f64> {
 	// https://fr.wikipedia.org/wiki/Algorithme_de_Dijkstra
 	// complexité n log n ;graph.nodes.len()
 	let mut dist = vec![std::f64::INFINITY; graph.n_nodes()];
@@ -304,7 +304,7 @@ pub fn dijkstra<F: PRMFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_no
 
 /***********************Policy Extraction***********************/
 
-pub fn get_policy_graph<const N: usize>(graph: &PRMGraph<N>, cost_to_goals: &[Vec<f64>]) -> Result<PRMGraph<N>, &'static str> {
+pub fn get_policy_graph<const N: usize>(graph: &PTOGraph<N>, cost_to_goals: &[Vec<f64>]) -> Result<PTOGraph<N>, &'static str> {
 	let mut policy = graph.clone();
 	let n_worlds = cost_to_goals.len();
 
@@ -369,17 +369,17 @@ mod tests {
 
 use super::*;
 
-fn to_ids(children: &Vec<PRMEdge>) -> Vec<usize> {
+fn to_ids(children: &Vec<PTOEdge>) -> Vec<usize> {
 	children.iter()
 		.map(|edge| edge.id)
 		.collect()
 }
 
-fn create_minimal_graph() -> PRMGraph<2> {
+fn create_minimal_graph() -> PTOGraph<2> {
 	/*
 	0->-1
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
+	let mut graph = PTOGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
 	graph.add_node([0.0, 0.0], 0);   
 	graph.add_node([1.0, 0.0], 0);   
 	graph.add_edge(0, 1, 0);
@@ -387,7 +387,7 @@ fn create_minimal_graph() -> PRMGraph<2> {
 	graph
 }
 
-fn create_grid_graph() -> PRMGraph<2> {
+fn create_grid_graph() -> PTOGraph<2> {
 	/*
     6---7---8
     |   |   |
@@ -395,7 +395,7 @@ fn create_grid_graph() -> PRMGraph<2> {
     |   |   |
 	0---1---2
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
+	let mut graph = PTOGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
 	// nodes
 	graph.add_node([0.0, 0.0], 0);   // 0
 	graph.add_node([1.0, 0.0], 0);   // 1
@@ -429,13 +429,13 @@ fn create_grid_graph() -> PRMGraph<2> {
 	graph
 }
 
-fn create_oriented_grid_graph() -> PRMGraph<2> {
+fn create_oriented_grid_graph() -> PTOGraph<2> {
 	/*
     2-<-3
     ^   ^
 	0->-1
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
+	let mut graph = PTOGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
 
 	// nodes
 	graph.add_node([0.0, 0.0], 0);   // 0
@@ -453,7 +453,7 @@ fn create_oriented_grid_graph() -> PRMGraph<2> {
 	graph
 }
 
-fn create_diamond_graph() -> PRMGraph<2> {
+fn create_diamond_graph() -> PTOGraph<2> {
 	/*
 	  1
 	 / \
@@ -461,7 +461,7 @@ fn create_diamond_graph() -> PRMGraph<2> {
 	 \ /
 	  2
 	*/
-	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
+	let mut graph = PTOGraph{nodes: Vec::new(), validities: vec![bitvec![1]]};
 
 	// nodes
 	graph.add_node([0.0, 0.0], 0);   // 0
@@ -480,7 +480,7 @@ fn create_diamond_graph() -> PRMGraph<2> {
 	graph
 }
 
-fn create_diamond_graph_2_worlds() -> PRMGraph<2> {
+fn create_diamond_graph_2_worlds() -> PTOGraph<2> {
 	/*
 	  1
 	 / \
@@ -489,7 +489,7 @@ fn create_diamond_graph_2_worlds() -> PRMGraph<2> {
 	  2
 	*/
 	// 1 valid in world 0, 2 valid in world 1
-	let mut graph = PRMGraph{nodes: Vec::new(), validities: vec![bitvec![1, 0], bitvec![0, 1], bitvec![1, 1], ]};
+	let mut graph = PTOGraph{nodes: Vec::new(), validities: vec![bitvec![1, 0], bitvec![0, 1], bitvec![1, 1], ]};
 
 	// nodes
 	graph.add_node([0.0, 0.0], 2);   // 0
@@ -520,7 +520,7 @@ fn test_policy_extraction_on_diamond_graph() {
 	let graph = create_diamond_graph();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
+	impl PTOFuncs<2> for Funcs {}
 
 	let dists = dijkstra(&graph, &vec![3], &Funcs{});
 
@@ -537,9 +537,9 @@ fn test_policy_extraction_on_diamond_graph_2_worlds() {
 	let graph = create_diamond_graph_2_worlds();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
-	let dists_w0 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 0}, &vec![3], &Funcs{});
-	let dists_w1 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 1}, &vec![3], &Funcs{});
+	impl PTOFuncs<2> for Funcs {}
+	let dists_w0 = dijkstra(&PTOGraphWorldView{graph: &graph, world: 0}, &vec![3], &Funcs{});
+	let dists_w1 = dijkstra(&PTOGraphWorldView{graph: &graph, world: 1}, &vec![3], &Funcs{});
 
 	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
 
@@ -554,9 +554,9 @@ fn test_policy_extraction_on_grid_with_2_different_goals() {
 	let graph = create_grid_graph();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
-	let dists_w0 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 0}, &vec![2], &Funcs{});
-	let dists_w1 = dijkstra(&PRMGraphWorldView{graph: &graph, world: 0}, &vec![5], &Funcs{});
+	impl PTOFuncs<2> for Funcs {}
+	let dists_w0 = dijkstra(&PTOGraphWorldView{graph: &graph, world: 0}, &vec![2], &Funcs{});
+	let dists_w1 = dijkstra(&PTOGraphWorldView{graph: &graph, world: 0}, &vec![5], &Funcs{});
 
 	let policy = get_policy_graph(&graph, &vec![dists_w0, dists_w1]).unwrap();
 
@@ -571,7 +571,7 @@ fn test_dijkstra_on_minimal_graph() {
 	let graph = create_minimal_graph();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
+	impl PTOFuncs<2> for Funcs {}
 	let dists = dijkstra(&graph, &vec![1], &Funcs{});
 
 	assert_eq!(dists, vec![1.0, 0.0]);
@@ -582,7 +582,7 @@ fn test_dijkstra_on_grid_graph_single_goal() {
 	let graph = create_grid_graph();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
+	impl PTOFuncs<2> for Funcs {}
 	let dists = dijkstra(&graph, &vec![8], &Funcs{});
 
 	assert_eq!(dists, vec![4.0, 3.0, 2.0, 3.0, 2.0, 1.0, 2.0, 1.0, 0.0]);
@@ -593,7 +593,7 @@ fn test_dijkstra_on_grid_graph_two_goals() {
 	let graph = create_grid_graph();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
+	impl PTOFuncs<2> for Funcs {}
 	let dists = dijkstra(&graph, &vec![7, 5], &Funcs{});
 
 	assert_eq!(dists, vec![3.0, 2.0, 1.0, 2.0, 1.0, 0.0, 1.0, 0.0, 1.0]);
@@ -604,7 +604,7 @@ fn test_dijkstra_without_final_node() {
 	let graph = create_grid_graph();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
+	impl PTOFuncs<2> for Funcs {}
 	let dists = dijkstra(&graph, &vec![], &Funcs{});
 
 	assert_eq!(dists, vec![std::f64::INFINITY; 9]);
@@ -615,7 +615,7 @@ fn test_dijkstra_on_oriented_grid() {
 	let graph = create_oriented_grid_graph();
 
 	struct Funcs {}
-	impl PRMFuncs<2> for Funcs {}
+	impl PTOFuncs<2> for Funcs {}
 	let dists = dijkstra(&graph, &vec![3], &Funcs{});
 
 	assert_eq!(dists, vec![2.0, 1.0, std::f64::INFINITY, 0.0]);
@@ -626,7 +626,7 @@ fn test_world_transitions() {
 	struct Funcs {
 		world_validities: Vec<WorldMask>
 	}
-	impl PRMFuncs<2> for Funcs {
+	impl PTOFuncs<2> for Funcs {
 		fn world_validities(&self) -> Vec<WorldMask> {
 			return self.world_validities.clone();
 		}
@@ -634,8 +634,8 @@ fn test_world_transitions() {
 
 	let f = Funcs{world_validities: vec![bitvec![1, 0], bitvec![0, 1], bitvec![1, 1]]};
 
-	fn dummy_node(validity_id : usize) -> PRMNode<2>	{
-		PRMNode{state: [0.0, 0.0], validity_id, parents: Vec::new(), children: Vec::new()}
+	fn dummy_node(validity_id : usize) -> PTONode<2>	{
+		PTONode{state: [0.0, 0.0], validity_id, parents: Vec::new(), children: Vec::new()}
 	}
 
 	assert_eq!(f.transition_validator(&dummy_node(0), &dummy_node(0)), Some(0));

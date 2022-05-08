@@ -352,7 +352,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				// piece 1: go to target observe zone
 				let observation_goal = ObservationGoal{m: &self.map_shelves_domain, zone_id: *target_zone_id};
 				
-				let (observation_planning_results, _) = rrt.plan_several(u.observation_state, &observation_goal, max_step, search_radius, n_iter_min, n_iter_max, 1.0, &mut self.discrete_sampler);
+				let (observation_planning_results, _) = rrt.plan_several(u.observation_state, &observation_goal, max_step, search_radius, n_iter_min, n_iter_max);
 				rrt_queries_it = rrt_queries_it+1;
 
 				println!("number of paths to observations:{}", observation_planning_results.len());

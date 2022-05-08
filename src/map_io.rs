@@ -1,6 +1,6 @@
 use crate::{rrt::{RRTTree}};
-use crate::{prm_graph::{PRMGraph, PRMNode, PRMFuncs}};
-use crate::prm_policy_refiner::*;
+use crate::{pto_graph::{PTOGraph, PTONode, PTOFuncs}};
+use crate::pto_policy_refiner::*;
 use crate::common::*;
 use image::{DynamicImage, GenericImageView, Luma};
 use image::DynamicImage::ImageLuma8;
@@ -413,7 +413,7 @@ impl Map {
 		}
 	}
 	
-	pub fn draw_full_graph(&mut self, graph: &PRMGraph<2>) {
+	pub fn draw_full_graph(&mut self, graph: &PTOGraph<2>) {
 		for from in &graph.nodes {
 			for to_edge in from.children.clone() {
 				let to  = &graph.nodes[to_edge.id];
@@ -422,11 +422,11 @@ impl Map {
 		}
 	}
 
-	pub fn draw_graph_from_root(&mut self, graph: &PRMGraph<2>) {
+	pub fn draw_graph_from_root(&mut self, graph: &PTOGraph<2>) {
 		self.draw_graph_from_root_impl(graph, &|_|{true})
 	}
 
-	pub fn draw_graph_for_world(&mut self, graph: &PRMGraph<2>, world:usize) {
+	pub fn draw_graph_for_world(&mut self, graph: &PTOGraph<2>, world:usize) {
 		if world > self.n_worlds {
 			panic!("Invalid world id");
 		}
@@ -434,7 +434,7 @@ impl Map {
 		self.draw_graph_from_root_impl(graph, &|node|{graph.validities[node.validity_id][world]})
 	}
 
-	pub fn draw_graph_from_root_impl(&mut self, graph: &PRMGraph<2>, validator: &dyn Fn(&PRMNode<2>) -> bool) {
+	pub fn draw_graph_from_root_impl(&mut self, graph: &PTOGraph<2>, validator: &dyn Fn(&PTONode<2>) -> bool) {
 		let mut visited = HashSet::new();
 		let mut queue: Queue<usize> = queue![];
 		visited.insert(0);
@@ -479,7 +479,7 @@ impl Map {
 	}
 } 
 
-impl PRMFuncs<2> for Map {
+impl PTOFuncs<2> for Map {
 	fn n_worlds(&self) -> usize {
 		self.n_worlds
 	}
@@ -492,7 +492,7 @@ impl PRMFuncs<2> for Map {
 		}
 	}
 
-	fn transition_validator(&self, from: &PRMNode<2>, to: &PRMNode<2>) -> Option<usize> {
+	fn transition_validator(&self, from: &PTONode<2>, to: &PTONode<2>) -> Option<usize> {
 		// needed -> TODO: compare with and without and benchmark
 		/*
 		let symbolic_validity = from.validity.iter().zip(&to.validity)

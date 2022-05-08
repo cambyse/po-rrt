@@ -29,7 +29,7 @@ name = "rrt"
 harness = false
 
 [[bench]]
-name = "prm"
+name = "pto"
 harness = false
 
 [[bench]]

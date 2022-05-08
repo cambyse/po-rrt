@@ -1,10 +1,10 @@
 #![allow(dead_code, unused_imports)]
 
 use crate::common::*;
-use crate ::prm_graph::*;
-use crate ::prm::*;
+use crate ::pto_graph::*;
+use crate ::pto::*;
 use crate ::sample_space::*;
-use crate ::prm_policy_refiner::*;
+use crate ::pto_policy_refiner::*;
 use bitvec::prelude::*;
 use ptr::{null, null_mut};
 use std::convert::TryInto;
@@ -209,13 +209,13 @@ macro_rules! plan_inner {
     ($N:expr, $planning_problem:expr, $start:expr) => {
 		let start_time = Instant::now();
 
-		let fns = PRMFuncsAdapter::<$N>::new($planning_problem);
+		let fns = PTOFuncsAdapter::<$N>::new($planning_problem);
 		let goal = GoalAdapter::<$N>::new($planning_problem);
-		let mut prm = PRM::new(ContinuousSampler::new_true_random(fns.low, fns.up), DiscreteSampler::new_true_random(), &fns);
+		let mut prm = PTO::new(ContinuousSampler::new_true_random(fns.low, fns.up), DiscreteSampler::new_true_random(), &fns);
 		prm.grow_graph(&$start.try_into().unwrap(), &goal, (*$planning_problem).max_step, (*$planning_problem).search_radius, (*$planning_problem).n_iterations_min, (*$planning_problem).n_iterations_max).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
-		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
+		let mut policy_refiner = PTOPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
 		let (policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut((*$planning_problem).refine_iterations));
 
 		save_planning_metrics($planning_problem, prm.n_it, prm.graph_growth_s, prm.belief_space_expansion_s, prm.dynamic_programming_s, policy_refiner.refinement_s, start_time.elapsed().as_secs_f64());
@@ -313,10 +313,10 @@ pub fn save_paths<const N: usize>(planning_problem: *mut CPlanningProblem, polic
 }
 
 //////////////////////////////////////////////////
-////////   PRMFuncsAdapter
+////////   PTOFuncsAdapter
 //////////////////////////////////////////////////
 
-pub struct PRMFuncsAdapter<const N: usize> {
+pub struct PTOFuncsAdapter<const N: usize> {
 	planning_problem: *const CPlanningProblem,
 	low: [f64; N],
 	up: [f64; N],
@@ -325,7 +325,7 @@ pub struct PRMFuncsAdapter<const N: usize> {
 	start_belief_state: Vec<f64>
 }
 
-impl<const N: usize> PRMFuncsAdapter<N> {
+impl<const N: usize> PTOFuncsAdapter<N> {
 	pub fn new(planning_problem: *const CPlanningProblem) -> Self {
 		unsafe {
 			assert!(N==(*planning_problem).low.1, "N:{}, low size:{}", N, (*planning_problem).low.1);
@@ -378,7 +378,7 @@ impl<const N: usize> PRMFuncsAdapter<N> {
 			start_belief_state = Vec::from_raw_parts((*planning_problem).start_belief_state.0, (*planning_problem).start_belief_state.1, (*planning_problem).start_belief_state.1);
 		}
 
-		PRMFuncsAdapter{
+		PTOFuncsAdapter{
 			planning_problem,
 			low,
 			up,
@@ -389,7 +389,7 @@ impl<const N: usize> PRMFuncsAdapter<N> {
 	}
 }
 
-impl<const N: usize> PRMFuncs<N> for PRMFuncsAdapter<N> {
+impl<const N: usize> PTOFuncs<N> for PTOFuncsAdapter<N> {
 	fn n_worlds(&self) -> usize {
 		unsafe {
 			(*self.planning_problem).n_worlds
@@ -403,7 +403,7 @@ impl<const N: usize> PRMFuncs<N> for PRMFuncsAdapter<N> {
 		}
 	}
 
-	fn transition_validator(&self, from: &PRMNode<N>, to: &PRMNode<N>) -> Option<usize> {
+	fn transition_validator(&self, from: &PTONode<N>, to: &PTONode<N>) -> Option<usize> {
 		unsafe {
 			let validity_id = (*self.planning_problem).transition_validity_callback.unwrap()(from.state.as_ptr(), from.state.len(), to.state.as_ptr(), to.state.len());
 			if validity_id >= 0 { Some(validity_id as usize) } else { None }

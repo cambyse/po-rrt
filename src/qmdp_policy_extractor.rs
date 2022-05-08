@@ -5,13 +5,13 @@ use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use crate::map_shelves_io::*; // tests only
-use crate::prm::*;
-use crate::prm_graph::*;
-use crate::prm_reachability::*;
+use crate::pto::*;
+use crate::pto_graph::*;
+use crate::pto_reachability::*;
 use bitvec::prelude::*;
 
-struct QMdpPolicyExtractor <'a, F: PRMFuncs<N>, const N: usize> {
-	graph: &'a PRMGraph<N>,
+struct QMdpPolicyExtractor <'a, F: PTOFuncs<N>, const N: usize> {
+	graph: &'a PTOGraph<N>,
 	kdtree: &'a KdTree<N>,
 	n_worlds: &'a usize,
 	conservative_reachability: &'a Reachability,
@@ -19,7 +19,7 @@ struct QMdpPolicyExtractor <'a, F: PRMFuncs<N>, const N: usize> {
 	cost_to_goals: Vec<Vec<f64>>,
 }
 
-impl <'a, F: PRMFuncs<N>, const N: usize> QMdpPolicyExtractor<'a, F, N> {
+impl <'a, F: PTOFuncs<N>, const N: usize> QMdpPolicyExtractor<'a, F, N> {
 	pub fn plan_qmdp(&mut self) -> Result<(), &'static str> {
 		// compute the cost to goals
 		self.cost_to_goals = vec![Vec::new(); *self.n_worlds];
@@ -28,7 +28,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> QMdpPolicyExtractor<'a, F, N> {
 			if final_nodes.is_empty() {
 				return Err(&"We should have final node ids for each world")
 			}
-			self.cost_to_goals[world] = dijkstra(&PRMGraphWorldView{graph: &self.graph, world}, &final_nodes, self.fns);
+			self.cost_to_goals[world] = dijkstra(&PTOGraphWorldView{graph: &self.graph, world}, &final_nodes, self.fns);
 		}
 
 		Ok(())
@@ -122,7 +122,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> QMdpPolicyExtractor<'a, F, N> {
 		best_child_id
 	}
 
-	fn get_policy_graph(&self) -> Result<PRMGraph<N>, &'static str> {
+	fn get_policy_graph(&self) -> Result<PTOGraph<N>, &'static str> {
 		get_policy_graph(&self.graph, &self.cost_to_goals)
 	}
 }
@@ -141,7 +141,7 @@ fn test_plan_on_map2_qmdp() {
 
 	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -179,7 +179,7 @@ fn test_plan_on_map1_2_goals() {
 	let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
 									([0.68, 0.38], bitvec![0, 1])], 0.05);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						DiscreteSampler::new(),
 						&m);
 
@@ -219,7 +219,7 @@ fn test_when_grow_graph_doesnt_reach_goal() {
 
 	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 

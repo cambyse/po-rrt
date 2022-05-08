@@ -5,21 +5,21 @@ use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_io::*; // tests only
 use crate::map_shelves_io::*; // tests only
-use crate::prm_graph::*;
-use crate::prm_reachability::*;
+use crate::pto_graph::*;
+use crate::pto_reachability::*;
 use crate::belief_graph::*;
 use std::time::Instant;
 use bitvec::prelude::*;
 
 
-pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
+pub struct PTO<'a, F: PTOFuncs<N>, const N: usize> {
 	continuous_sampler: ContinuousSampler<N>,
 	discrete_sampler: DiscreteSampler,
 	pub fns: &'a F,
 	pub kdtree: KdTree<N>,
 	// graph growth
 	pub n_worlds: usize,
-	pub graph: PRMGraph<N>,
+	pub graph: PTOGraph<N>,
 	// grow graph rrg
 	pub conservative_reachability: Reachability,
 	// pomdp
@@ -33,14 +33,14 @@ pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	pub dynamic_programming_s: f64
 }
 
-impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
+impl<'a, F: PTOFuncs<N>, const N: usize> PTO<'a, F, N> {
 	pub fn new(continuous_sampler: ContinuousSampler<N>, discrete_sampler: DiscreteSampler, fns: &'a F) -> Self {
 		Self { continuous_sampler,
 			   discrete_sampler,
 			   fns, 
 			   kdtree: KdTree::new([0.0; N]),
 			   n_worlds: fns.n_worlds(), 
-			   graph: PRMGraph{nodes: vec![], validities: fns.world_validities()},
+			   graph: PTOGraph{nodes: vec![], validities: fns.world_validities()},
 			   conservative_reachability: Reachability::new(), 
 			   node_to_belief_nodes: Vec::new(),
 		       belief_graph: BeliefGraph::new(Vec::new(), Vec::new()),
@@ -301,7 +301,7 @@ fn test_plan_on_map0_pomdp() {
 	m.init_without_zones();
 
 	let goal = SquareGoal::new(vec![([0.0, 0.9], bitvec![1; 1])], 0.05);
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -323,7 +323,7 @@ fn test_plan_on_map2_pomdp() {
 	m.add_zones("data/map2_zone_ids.pgm", 0.2);
 
 	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -345,7 +345,7 @@ fn test_plan_on_map4_pomdp() {
 	m.add_zones("data/map4_zone_ids.pgm", 0.15);
 
 	let goal = SquareGoal::new(vec![([-0.55, 0.9], bitvec![1; 16])], 0.05);
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -367,7 +367,7 @@ fn test_plan_on_map1_fov_pomdp() {
 	m.add_zones("data/map1_fov_zone_ids.pgm", 1.5);
 
 	let goal = SquareGoal::new(vec![([0.85, 0.37], bitvec![1; 2])], 0.05);
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -395,7 +395,7 @@ fn test_plan_on_map2_fov_pomdp() {
 	let goal = SquareGoal::new(vec![([0.775, 0.4], bitvec![1; 4])], 0.05);
 
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -419,7 +419,7 @@ fn test_plan_on_map2_fov_bounds_restricted_pomdp() { // same example as before b
 	let goal = SquareGoal::new(vec![([0.775, 0.4], bitvec![1; 4])], 0.05);
 
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -0.5], [1.0, 0.5]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -0.5], [1.0, 0.5]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -448,7 +448,7 @@ fn test_plan_on_map0() {
 	let goal = SquareGoal::new(vec![([0.5, 0.35], bitvec![1; 1])], 0.05);
 
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
@@ -472,7 +472,7 @@ fn test_plan_on_map1_2_goals() {
 	let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
 									([0.68, 0.38], bitvec![0, 1])], 0.05);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						DiscreteSampler::new(),
 						&m);
 
@@ -499,7 +499,7 @@ fn test_plan_on_map1_3_goals() {
 									([-0.7, 0.14], bitvec![0, 0, 1])],
 									 0.05);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						DiscreteSampler::new(),
 						&m);
 
@@ -528,7 +528,7 @@ fn test_plan_on_map5_4_goals() {
 									([ 0.75, 0.75], bitvec![0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])],
 									 0.05);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						DiscreteSampler::new(),
 						&m);
 
@@ -550,7 +550,7 @@ fn test_build_belief_graph() {
 	let mut m = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_zone_ids.pgm", 0.1);
 
-	let mut prm = PRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 	// mock graph growth
@@ -618,6 +618,6 @@ fn test_build_belief_graph() {
 // TODO:
 // - avoid copies
 // - optimize nearest neighbor (avoid sqrt)
-// - actual PRM roadmap
+// - actual PTO roadmap
 
 // tentative propagation code
