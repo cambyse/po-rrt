@@ -302,6 +302,62 @@ pub fn dijkstra<F: PTOFuncs<N>, const N: usize>(graph: & impl Graph<N>, final_no
 	dist
 }
 
+pub fn extract_path<F: PTOFuncs<N>, const N: usize>(graph: & impl Graph<N>, start_id: usize, expected_costs_to_goals: &[f64], m: &F) -> Vec<[f64; N]> {
+    if graph.n_nodes() == 0 {
+        panic!("no belief state graph!");
+    }
+
+	let mut path = Vec::new();
+
+	let mut node_id = start_id;
+	let mut node = graph.node(start_id);
+	path.push(node.state().clone());
+
+	while expected_costs_to_goals[node_id] != 0.0 {
+		let (best_parent_id, _) = graph.parents(node_id).iter().map(|parent_id| (parent_id, graph.node(*parent_id).state())) //expected_costs_to_goals[*parent_id])
+											 .map(|(&parent_id, &parent_state)| (parent_id, expected_costs_to_goals[parent_id] + m.cost_evaluator(&parent_state, node.state())))
+											 .min_by(|(_, c_a), (__, c_b)| c_a.partial_cmp(c_b).unwrap()).unwrap();
+
+		node_id = best_parent_id;
+		node = graph.node(node_id);
+
+		path.push(node.state().clone());
+	}
+
+	/*
+    let mut policy: Policy<N> = Policy{nodes: vec![], leafs: vec![], expected_costs: 0.0};
+    let mut lifo: Vec<(usize, usize)> = Vec::new(); // policy_node, belief_graph_node
+
+    policy.add_node(&graph.nodes[0].state, &graph.nodes[0].belief_state, 0, false);
+
+    lifo.push((0, 0));
+
+    while !lifo.is_empty() {
+        let (policy_node_id, belief_node_id) = lifo.pop().unwrap();
+
+        let children_ids = get_best_expected_children(graph, belief_node_id, expected_costs_to_goals, cost_evaluator);
+
+        //println!("---");
+
+        for child_id in children_ids {
+            let child = &graph.nodes[child_id];
+            let is_leaf = expected_costs_to_goals[child_id] == 0.0;
+            let child_policy_id = policy.add_node(&child.state, &graph.nodes[child_id].belief_state, child_id, is_leaf);
+            policy.add_edge(policy_node_id, child_policy_id);
+
+            //println!("add node, belief state {:?}, cost: {:?}", &graph.nodes[child_id].belief_state, &expected_costs_to_goals[child_id]);
+
+            if ! is_leaf {
+                lifo.push((child_policy_id, child_id));
+            }
+        }
+    }
+    policy.expected_costs = expected_costs_to_goals[0];
+    policy*/
+
+	path
+}
+
 /***********************Policy Extraction***********************/
 
 pub fn get_policy_graph<const N: usize>(graph: &PTOGraph<N>, cost_to_goals: &[Vec<f64>]) -> Result<PTOGraph<N>, &'static str> {
@@ -337,7 +393,7 @@ pub fn get_policy_graph<const N: usize>(graph: &PTOGraph<N>, cost_to_goals: &[Ve
 			let eq_constraint : Vec<(Variable, f64)> = belief.iter().map(|w|{(*w, 1.0)}).collect();
 			problem.add_constraint(&eq_constraint, ComparisonOp::Eq, 1.0);
 
-			// improvment constraint
+			// improvement constraint
 			for other_edge in &node.children {
 				if other_edge.id != to_edge.id {
 					let mut improvment_constraint : Vec<(Variable, f64)> = Vec::new();

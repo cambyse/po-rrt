@@ -301,20 +301,20 @@ fn test_plan_on_map0_pomdp() {
 	m.init_without_zones();
 
 	let goal = SquareGoal::new(vec![([0.0, 0.9], bitvec![1; 1])], 0.05);
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.0, 0.0], &goal, 0.1, 5.0, 100, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
-	let policy = prm.plan_belief_space(&vec![1.0]);
+	pto.grow_graph(&[0.0, 0.0], &goal, 0.1, 5.0, 100, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
+	let policy = pto.plan_belief_space(&vec![1.0]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_prm_on_map0_pomdp");
+	m2.save("results/test_pto_on_map0_pomdp");
 }
 
 #[test]
@@ -323,20 +323,20 @@ fn test_plan_on_map2_pomdp() {
 	m.add_zones("data/map2_zone_ids.pgm", 0.2);
 
 	let goal = SquareGoal::new(vec![([0.55, 0.9], bitvec![1; 4])], 0.05);
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
-	let policy = prm.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
+	pto.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
+	let policy = pto.plan_belief_space(&vec![0.1, 0.1, 0.1, 0.7]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_prm_on_map2_pomdp");
+	m2.save("results/test_pto_on_map2_pomdp");
 }
 
 #[test]
@@ -345,20 +345,20 @@ fn test_plan_on_map4_pomdp() {
 	m.add_zones("data/map4_zone_ids.pgm", 0.15);
 
 	let goal = SquareGoal::new(vec![([-0.55, 0.9], bitvec![1; 16])], 0.05);
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], &goal, 0.05, 5.0, 10500, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
-	let policy = prm.plan_belief_space( &vec![1.0/16.0; 16]);
+	pto.grow_graph(&[0.55, -0.8], &goal, 0.05, 5.0, 10500, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
+	let policy = pto.plan_belief_space( &vec![1.0/16.0; 16]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_prm_on_map4_pomdp");
+	m2.save("results/test_pto_on_map4_pomdp");
 }
 
 #[test]
@@ -367,20 +367,20 @@ fn test_plan_on_map1_fov_pomdp() {
 	m.add_zones("data/map1_fov_zone_ids.pgm", 1.5);
 
 	let goal = SquareGoal::new(vec![([0.85, 0.37], bitvec![1; 2])], 0.05);
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[-0.37, 0.37], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
-	let policy = prm.plan_belief_space(&vec![0.5, 0.5]);
+	pto.grow_graph(&[-0.37, 0.37], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
+	let policy = pto.plan_belief_space(&vec![0.5, 0.5]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_prm_on_map1_fov_pomdp");
+	m2.save("results/test_pto_on_map1_fov_pomdp");
 }
 
 #[test]
@@ -395,20 +395,20 @@ fn test_plan_on_map2_fov_pomdp() {
 	let goal = SquareGoal::new(vec![([0.775, 0.4], bitvec![1; 4])], 0.05);
 
 
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.35, -0.125], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
-	let policy = prm.plan_belief_space(&vec![0.25, 0.25, 0.25, 0.25]);
+	pto.grow_graph(&[0.35, -0.125], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
+	let policy = pto.plan_belief_space(&vec![0.25, 0.25, 0.25, 0.25]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_prm_on_map2_fov_pomdp");
+	m2.save("results/test_pto_on_map2_fov_pomdp");
 }
 
 #[test]
@@ -419,20 +419,20 @@ fn test_plan_on_map2_fov_bounds_restricted_pomdp() { // same example as before b
 	let goal = SquareGoal::new(vec![([0.775, 0.4], bitvec![1; 4])], 0.05);
 
 
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -0.5], [1.0, 0.5]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -0.5], [1.0, 0.5]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.35, -0.125], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
-	let policy = prm.plan_belief_space(&vec![0.25, 0.25, 0.25, 0.25]);
+	pto.grow_graph(&[0.35, -0.125], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
+	let policy = pto.plan_belief_space(&vec![0.25, 0.25, 0.25, 0.25]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_prm_on_map2_fov_restricted_pomdp");
+	m2.save("results/test_pto_on_map2_fov_restricted_pomdp");
 }
 
 
@@ -448,20 +448,20 @@ fn test_plan_on_map0() {
 	let goal = SquareGoal::new(vec![([0.5, 0.35], bitvec![1; 1])], 0.05);
 
 
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 
-	prm.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 500, 10000).expect("graph not grown up to solution");
-	prm.print_summary();
-	let policy = prm.plan_belief_space(&vec![1.0]);
+	pto.grow_graph(&[0.55, -0.8], &goal, 0.1, 5.0, 500, 10000).expect("graph not grown up to solution");
+	pto.print_summary();
+	let policy = pto.plan_belief_space(&vec![1.0]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/test_prm_on_map0");
+	m2.save("results/test_pto_on_map0");
 }
 
 #[test]
@@ -472,18 +472,18 @@ fn test_plan_on_map1_2_goals() {
 	let goal = SquareGoal::new(vec![([0.68, -0.45], bitvec![1, 0]),
 									([0.68, 0.38], bitvec![0, 1])], 0.05);
 
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						DiscreteSampler::new(),
 						&m);
 
-	prm.grow_graph(&[-0.8, -0.8], &goal, 0.05, 5.0, 2000, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
+	pto.grow_graph(&[-0.8, -0.8], &goal, 0.05, 5.0, 2000, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
 
-	let policy = prm.plan_belief_space(&vec![0.2, 0.8]);
+	let policy = pto.plan_belief_space(&vec![0.2, 0.8]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/test_plan_on_map1_2_goals_pomdp");
@@ -499,19 +499,19 @@ fn test_plan_on_map1_3_goals() {
 									([-0.7, 0.14], bitvec![0, 0, 1])],
 									 0.05);
 
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						DiscreteSampler::new(),
 						&m);
 
-	prm.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
+	pto.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
 
-	//let policy = prm.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
-	let policy = prm.plan_belief_space(&vec![0.5/3.0, 0.5/3.0, 2.0/3.0]);
+	//let policy = pto.plan_belief_space(&vec![1.0/3.0, 1.0/3.0, 1.0/3.0]);
+	let policy = pto.plan_belief_space(&vec![0.5/3.0, 0.5/3.0, 2.0/3.0]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/test_plan_on_map1_3_goals_pomdp");
@@ -528,18 +528,18 @@ fn test_plan_on_map5_4_goals() {
 									([ 0.75, 0.75], bitvec![0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0])],
 									 0.05);
 
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						DiscreteSampler::new(),
 						&m);
 
-	prm.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
-	prm.print_summary();
+	pto.grow_graph(&[0.0, -0.8], &goal, 0.05, 5.0, 5000, 100000).expect("graph not grown up to solution");
+	pto.print_summary();
 
-	let policy = prm.plan_belief_space(&vec![1.0/4.0, 1.0/4.0, 1.0/4.0, 1.0/4.0]);
+	let policy = pto.plan_belief_space(&vec![1.0/4.0, 1.0/4.0, 1.0/4.0, 1.0/4.0]);
 
 	let mut m2 = m.clone();
 	m2.resize(5);
-	m2.draw_full_graph(&prm.graph);
+	m2.draw_full_graph(&pto.graph);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/map5/test_map5_4_goals_pomdp");
@@ -550,49 +550,49 @@ fn test_build_belief_graph() {
 	let mut m = Map::open("data/map1.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_zone_ids.pgm", 0.1);
 
-	let mut prm = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
+	let mut pto = PTO::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]),
 						   DiscreteSampler::new(),
 						   &m);
 	// mock graph growth
-	prm.n_worlds = 2;
-	prm.graph.validities = vec![bitvec![0, 1], bitvec![1, 1]];
+	pto.n_worlds = 2;
+	pto.graph.validities = vec![bitvec![0, 1], bitvec![1, 1]];
 
-	prm.graph.add_node([0.55, -0.8], 1); // 0 ~ [0, 1, 2]
-	prm.graph.add_node([-0.42, -0.38], 1); // 1 ~ [3, 4, 5]
-	prm.graph.add_node([0.54, 0.0], 1);   // 2 ~ [6, 7, 8]
-	prm.graph.add_node([0.54, 0.1], 0);   // 3 ~ [10, 11, 12]
-	prm.graph.add_node([-0.97, 0.65], 1); // 4 ~ [9, 10, 11]
-	prm.graph.add_node([0.55, 0.9], 1);   // 5 ~ [15, 16, 17]
+	pto.graph.add_node([0.55, -0.8], 1); // 0 ~ [0, 1, 2]
+	pto.graph.add_node([-0.42, -0.38], 1); // 1 ~ [3, 4, 5]
+	pto.graph.add_node([0.54, 0.0], 1);   // 2 ~ [6, 7, 8]
+	pto.graph.add_node([0.54, 0.1], 0);   // 3 ~ [10, 11, 12]
+	pto.graph.add_node([-0.97, 0.65], 1); // 4 ~ [9, 10, 11]
+	pto.graph.add_node([0.55, 0.9], 1);   // 5 ~ [15, 16, 17]
 
-	prm.graph.add_bi_edge(0, 1, 1);
-	prm.graph.add_bi_edge(1, 2, 1);
-	prm.graph.add_bi_edge(2, 3, 0);
-	prm.graph.add_bi_edge(3, 5, 0);
+	pto.graph.add_bi_edge(0, 1, 1);
+	pto.graph.add_bi_edge(1, 2, 1);
+	pto.graph.add_bi_edge(2, 3, 0);
+	pto.graph.add_bi_edge(3, 5, 0);
 
-	prm.graph.add_bi_edge(1, 4, 1);
-	prm.graph.add_bi_edge(4, 5, 1);
+	pto.graph.add_bi_edge(1, 4, 1);
+	pto.graph.add_bi_edge(4, 5, 1);
 
-	prm.conservative_reachability.add_final_node(5, bitvec![1, 1]);
+	pto.conservative_reachability.add_final_node(5, bitvec![1, 1]);
 	//
 
-	let _policy = prm.plan_belief_space(&vec![0.5, 0.5]);	
-	assert_eq!(prm.belief_graph.nodes[6].children, vec![7, 8]); // observation transitions
-	assert!(!prm.belief_graph.nodes[7].children.contains(&6)); // observation is irreversible
-	assert!(!prm.belief_graph.nodes[8].children.contains(&6)); // observation is irreversible
+	let _policy = pto.plan_belief_space(&vec![0.5, 0.5]);	
+	assert_eq!(pto.belief_graph.nodes[6].children, vec![7, 8]); // observation transitions
+	assert!(!pto.belief_graph.nodes[7].children.contains(&6)); // observation is irreversible
+	assert!(!pto.belief_graph.nodes[8].children.contains(&6)); // observation is irreversible
 
-	for (id, node) in prm.belief_graph.nodes.iter().enumerate() { // belief jump only at observation points
+	for (id, node) in pto.belief_graph.nodes.iter().enumerate() { // belief jump only at observation points
 		if id == 6 {
 			continue;
 		}
 		for &child_id in &node.children {
-			assert_eq!(node.belief_id, prm.belief_graph.nodes[child_id].belief_id);
+			assert_eq!(node.belief_id, pto.belief_graph.nodes[child_id].belief_id);
 		}
 	}
 
 	// draw
 	//let mut full = m.clone();
 	//full.resize(5);
-	//full.draw_full_graph(&prm.graph);
+	//full.draw_full_graph(&pto.graph);
 	//full.draw_policy(&policy);
 	//full.save("results/test_build_belief_graph.pgm");
 }

@@ -12,6 +12,7 @@ pub mod map_shelves_io;
 pub mod nearest_neighbor;
 pub mod rrt;
 pub mod pto;
+pub mod prm;
 pub mod pto_graph;
 pub mod pto_reachability;
 pub mod belief_graph;
