@@ -1,47 +1,47 @@
 PRM --- 2 goals
-costs: Statistics { mean: 1.7529471182990233, std_dev: 0.0000000000000002220446049250313 }
-planning_times: Statistics { mean: 0.0838456953, std_dev: 0.007253576068671756 }
+costs: Statistics { mean: 1.752947118299025, std_dev: 0.0000000000000019984014443252818 }
+planning_times: Statistics { mean: 0.07659110382999999, std_dev: 0.0034439010946186355 }
 
 
 RRT* --- 2 goals
-costs: Statistics { mean: 1.8569080235157531, std_dev: 0.02674007567481741 }
-planning_times: Statistics { mean: 0.0763110857, std_dev: 0.003770685377720397 }
+costs: Statistics { mean: 1.864368456044471, std_dev: 0.029328431932243975 }
+planning_times: Statistics { mean: 0.07422543269999998, std_dev: 0.0014881733795904396 }
 
 
 
 
 PRM --- 4 goals
-costs: Statistics { mean: 2.2212974330517827, std_dev: 0.004830598766443606 }
-planning_times: Statistics { mean: 0.3447605707, std_dev: 0.0196618735833914 }
+costs: Statistics { mean: 2.2182318484934367, std_dev: 0.0069749307995160765 }
+planning_times: Statistics { mean: 0.31795961788999993, std_dev: 0.007198870275086371 }
 
 
 RRT* --- 4 goals
-costs: Statistics { mean: 2.3748431227440063, std_dev: 0.052234186952610624 }
-planning_times: Statistics { mean: 0.8065830762000001, std_dev: 0.03738451701932878 }
+costs: Statistics { mean: 2.3499913784621316, std_dev: 0.052895048360728524 }
+planning_times: Statistics { mean: 0.81663182369, std_dev: 0.037645875495247436 }
 
 
 
 
 PRM --- 6 goals
-costs: Statistics { mean: 2.3911496782081954, std_dev: 0.017014964527894274 }
-planning_times: Statistics { mean: 1.3742766512, std_dev: 0.027593691862911347 }
+costs: Statistics { mean: 2.3861001798601196, std_dev: 0.01250365893615739 }
+planning_times: Statistics { mean: 1.417873659, std_dev: 0.03521165458280469 }
 
 
 RRT* --- 6 goals
-costs: Statistics { mean: 2.6112924196096783, std_dev: 0.04302356763114533 }
-planning_times: Statistics { mean: 11.0703240974, std_dev: 1.7930297134614095 }
+costs: Statistics { mean: 2.634565131756074, std_dev: 0.03520865918281855 }
+planning_times: Statistics { mean: 11.629207418680004, std_dev: 1.8874397317941933 }
 
 
 
 
 PRM --- 8 goals
-costs: Statistics { mean: 2.360321441477037, std_dev: 0.006327867435476648 }
-planning_times: Statistics { mean: 7.585573182200001, std_dev: 0.31123186125630625 }
+costs: Statistics { mean: 2.353068618541041, std_dev: 0.010948172879888458 }
+planning_times: Statistics { mean: 6.9391229785499995, std_dev: 0.1535495073190056 }
 
 
 RRT* --- 8 goals
-costs: Statistics { mean: 2.5971396786963075, std_dev: 0.016946606904564912 }
-planning_times: Statistics { mean: 107.3652537214, std_dev: 22.09401977134231 }
+costs: Statistics { mean: 2.58784774664461, std_dev: 0.02478937817979469 }
+planning_times: Statistics { mean: 108.00610771832002, std_dev: 21.096260753333905 }
 
 
 

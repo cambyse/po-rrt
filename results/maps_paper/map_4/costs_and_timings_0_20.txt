@@ -1,0 +1,7 @@
+n_it: Statistics { mean: 3956.8, std_dev: 626.384514495689 }
+graph_creation (ms): Statistics { mean: 44.7116804, std_dev: 14.370087800414035 }
+belief_expansion (ms): Statistics { mean: 345.92642830000005, std_dev: 102.28185548532814 }
+dynamic_programming (ms): Statistics { mean: 173.6800266, std_dev: 60.85504400359927 }
+partial_shortcut (ms): Statistics { mean: 3.2532243000000003, std_dev: 1.0713280484673264 }
+cost: Statistics { mean: 45.17632675181604, std_dev: 1.744800071643021 }
+total: Statistics { mean: 567.65904065, std_dev: 174.84885019866886 }

@@ -1,0 +1,48 @@
+PRM --- 2 goals
+costs: Statistics { mean: 1.7529471182990233, std_dev: 0.0000000000000002220446049250313 }
+planning_times: Statistics { mean: 0.0838456953, std_dev: 0.007253576068671756 }
+
+
+RRT* --- 2 goals
+costs: Statistics { mean: 1.8569080235157531, std_dev: 0.02674007567481741 }
+planning_times: Statistics { mean: 0.0763110857, std_dev: 0.003770685377720397 }
+
+
+
+
+PRM --- 4 goals
+costs: Statistics { mean: 2.2212974330517827, std_dev: 0.004830598766443606 }
+planning_times: Statistics { mean: 0.3447605707, std_dev: 0.0196618735833914 }
+
+
+RRT* --- 4 goals
+costs: Statistics { mean: 2.3748431227440063, std_dev: 0.052234186952610624 }
+planning_times: Statistics { mean: 0.8065830762000001, std_dev: 0.03738451701932878 }
+
+
+
+
+PRM --- 6 goals
+costs: Statistics { mean: 2.3911496782081954, std_dev: 0.017014964527894274 }
+planning_times: Statistics { mean: 1.3742766512, std_dev: 0.027593691862911347 }
+
+
+RRT* --- 6 goals
+costs: Statistics { mean: 2.6112924196096783, std_dev: 0.04302356763114533 }
+planning_times: Statistics { mean: 11.0703240974, std_dev: 1.7930297134614095 }
+
+
+
+
+PRM --- 8 goals
+costs: Statistics { mean: 2.360321441477037, std_dev: 0.006327867435476648 }
+planning_times: Statistics { mean: 7.585573182200001, std_dev: 0.31123186125630625 }
+
+
+RRT* --- 8 goals
+costs: Statistics { mean: 2.5971396786963075, std_dev: 0.016946606904564912 }
+planning_times: Statistics { mean: 107.3652537214, std_dev: 22.09401977134231 }
+
+
+
+
