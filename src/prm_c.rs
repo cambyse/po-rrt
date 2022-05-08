@@ -11,6 +11,7 @@ use std::convert::TryInto;
 use std::iter::FromIterator;
 use std::ptr;
 use std::usize;
+use std::time::Instant;
 
 
 pub type StateValidityCallbackType = extern fn(*const f64, usize) -> i64;
@@ -49,7 +50,14 @@ pub struct CPlanningProblem{
 	refine_iterations: usize,
 	// output
 	paths: Vec<Vec<Vec<f64>>>,
-	paths_lengths: Vec<usize>
+	paths_lengths: Vec<usize>,
+	expected_costs: f64,
+	n_iterations: usize,
+	graph_growth_s: f64,
+	belief_space_expansion_s: f64,
+	dynamic_programming_s: f64,
+	refinement_s: f64,
+	total_s: f64
 }
 
 #[no_mangle]
@@ -79,7 +87,14 @@ pub extern "C" fn new_planning_problem() -> Box<CPlanningProblem> {
 			refine_iterations: 0,
 			// output
 			paths: Vec::new(),
-			paths_lengths: Vec::new()
+			paths_lengths: Vec::new(),
+			expected_costs: 0.0,
+			n_iterations: 0,
+			graph_growth_s: 0.0,
+			belief_space_expansion_s: 0.0,
+			dynamic_programming_s: 0.0,
+			refinement_s: 0.0,
+			total_s: 0.0
 		}
 	)
 }
@@ -192,15 +207,18 @@ pub extern "C" fn set_refine_parameters(planning_problem: *mut CPlanningProblem,
 
 macro_rules! plan_inner {
     ($N:expr, $planning_problem:expr, $start:expr) => {
+		let start_time = Instant::now();
+
 		let fns = PRMFuncsAdapter::<$N>::new($planning_problem);
 		let goal = GoalAdapter::<$N>::new($planning_problem);
-		let mut prm = PRM::new(ContinuousSampler::new(fns.low, fns.up), DiscreteSampler::new(), &fns);
+		let mut prm = PRM::new(ContinuousSampler::new_true_random(fns.low, fns.up), DiscreteSampler::new_true_random(), &fns);
 		prm.grow_graph(&$start.try_into().unwrap(), &goal, (*$planning_problem).max_step, (*$planning_problem).search_radius, (*$planning_problem).n_iterations_min, (*$planning_problem).n_iterations_max).expect("graph not grown up to solution");
 		prm.print_summary();
 		let policy = prm.plan_belief_space(&fns.start_belief_state);
 		let mut policy_refiner = PRMPolicyRefiner::new(&policy, &fns, &prm.belief_graph);
 		let (policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut((*$planning_problem).refine_iterations));
 
+		save_planning_metrics($planning_problem, prm.n_it, prm.graph_growth_s, prm.belief_space_expansion_s, prm.dynamic_programming_s, policy_refiner.refinement_s, start_time.elapsed().as_secs_f64());
 		save_paths($planning_problem, &policy);
     };
 }
@@ -223,10 +241,23 @@ pub extern "C" fn plan(planning_problem: *mut CPlanningProblem, start_raw: *mut 
 }
 
 #[no_mangle]
-pub extern "C" fn get_paths_info(planning_problem: *mut CPlanningProblem, number_of_paths: *mut usize, path_lengths: *mut *mut usize) {
+pub extern "C" fn get_planning_metrics(planning_problem: *mut CPlanningProblem, n_iterations: *mut usize, graph_growth_s: *mut f64, belief_space_expansion_s: *mut f64, dynamic_programming_s: *mut f64, refinement_s: *mut f64, total_s: *mut f64) {
+	unsafe {
+		*n_iterations = (*planning_problem).n_iterations;
+		*graph_growth_s = (*planning_problem).graph_growth_s;
+		*belief_space_expansion_s = (*planning_problem).belief_space_expansion_s;
+		*dynamic_programming_s = (*planning_problem).dynamic_programming_s;
+		*refinement_s = (*planning_problem).refinement_s;
+		*total_s = (*planning_problem).total_s;
+	}
+}
+
+#[no_mangle]
+pub extern "C" fn get_paths_info(planning_problem: *mut CPlanningProblem, number_of_paths: *mut usize, path_lengths: *mut *mut usize, expected_cost: *mut f64) {
 	unsafe {
 		*number_of_paths = (*planning_problem).paths.len();
 		*path_lengths = (*planning_problem).paths_lengths.as_mut_ptr() as *mut usize;
+		*expected_cost = (*planning_problem).expected_costs;
 	}
 }
 
@@ -235,6 +266,17 @@ pub extern "C" fn get_paths_variable(planning_problem: *mut CPlanningProblem, pa
 	unsafe {
 		(*c_state) = (*planning_problem).paths[path_id][state_id].as_mut_ptr();
 		(*state_size) = (*planning_problem).paths[path_id][state_id].len();
+	}
+}
+
+pub fn save_planning_metrics(planning_problem: *mut CPlanningProblem, n_it: usize, graph_growth_s: f64, belief_space_expansion_s: f64, dynamic_programming_s: f64, refinement_s: f64, total_s: f64) {
+	unsafe{
+		(*planning_problem).n_iterations = n_it;
+		(*planning_problem).graph_growth_s = graph_growth_s;
+		(*planning_problem).belief_space_expansion_s = belief_space_expansion_s;
+		(*planning_problem).dynamic_programming_s = dynamic_programming_s;
+		(*planning_problem).refinement_s = refinement_s;
+		(*planning_problem).total_s = total_s;
 	}
 }
 
@@ -263,9 +305,10 @@ pub fn save_paths<const N: usize>(planning_problem: *mut CPlanningProblem, polic
 	}
 
 	unsafe{
-		//println!("paths:{:?}", paths);
+		//println!("paths:{:?}, expected costs:{}", paths, policy.expected_costs);
 		(*planning_problem).paths = paths;
 		(*planning_problem).paths_lengths = paths_lengths;
+		(*planning_problem).expected_costs = policy.expected_costs;
 	}
 }
 

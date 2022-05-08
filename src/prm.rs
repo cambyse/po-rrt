@@ -8,6 +8,7 @@ use crate::map_shelves_io::*; // tests only
 use crate::prm_graph::*;
 use crate::prm_reachability::*;
 use crate::belief_graph::*;
+use std::time::Instant;
 use bitvec::prelude::*;
 
 
@@ -18,14 +19,18 @@ pub struct PRM<'a, F: PRMFuncs<N>, const N: usize> {
 	pub kdtree: KdTree<N>,
 	// graph growth
 	pub n_worlds: usize,
-	n_it: usize,
 	pub graph: PRMGraph<N>,
 	// grow graph rrg
 	pub conservative_reachability: Reachability,
 	// pomdp
 	node_to_belief_nodes: Vec<Vec<Option<usize>>>,
 	pub belief_graph: BeliefGraph<N>,
-	expected_costs_to_goals: Vec<f64>
+	expected_costs_to_goals: Vec<f64>,
+	// debug / benchmark
+	pub n_it: usize,
+	pub graph_growth_s: f64,
+	pub belief_space_expansion_s: f64,
+	pub dynamic_programming_s: f64
 }
 
 impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
@@ -35,18 +40,23 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			   fns, 
 			   kdtree: KdTree::new([0.0; N]),
 			   n_worlds: fns.n_worlds(), 
-			   n_it: 0,
 			   graph: PRMGraph{nodes: vec![], validities: fns.world_validities()},
 			   conservative_reachability: Reachability::new(), 
 			   node_to_belief_nodes: Vec::new(),
 		       belief_graph: BeliefGraph::new(Vec::new(), Vec::new()),
-			   expected_costs_to_goals: Vec::new() }
+			   expected_costs_to_goals: Vec::new(),
+			   n_it: 0,
+			   graph_growth_s: 0.0,
+			   belief_space_expansion_s: 0.0,
+			   dynamic_programming_s: 0.0
+			}
 	}
 
 	pub fn grow_graph(&mut self, &start: &[f64; N], goal: &impl GoalFuncs<N>,
 				max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<(), &'static str> {
 
 		println!("grow graph..");
+		let start_time = Instant::now();
 
 		let root_validity_id = self.fns.state_validity(&start).expect("Start from a valid state!");
 		self.graph.add_node(start, root_validity_id);
@@ -76,6 +86,10 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 
 				// Fourth, we find the neighbors in a specific radius of new_state.
 				let radius = heuristic_radius(self.graph.nodes.len(), max_step, search_radius, N);
+
+				//if i%100 == 0{
+				//	println!("radius:{}", radius);
+				//}
 
 				// Fifth we connect to neighbors 
 				let mut neighbour_ids: Vec<usize> = self.kdtree.nearest_neighbors(new_state, radius).iter()
@@ -113,7 +127,8 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 			}
 		}
 
-		self.n_it += i;
+		self.n_it = i;
+		self.graph_growth_s = start_time.elapsed().as_secs_f64();
 
 		match self.conservative_reachability.is_final_set_complete() {
 			true => {
@@ -137,19 +152,31 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn plan_belief_space(&mut self, start_belief_state: &BeliefState) -> Policy<N> {
 		assert_belief_state_validity(start_belief_state);
 		
+		//
 		println!("build belief graph..");
+		let start_time = Instant::now();
+		//
 
 		self.build_belief_graph(start_belief_state);
 
+		//
+		self.belief_space_expansion_s = start_time.elapsed().as_secs_f64();
 		println!("compute expected costs to goal..");
+		let start_time = Instant::now();
+		//
 
 		self.compute_expected_costs_to_goals();
-				
+		
+		//
 		println!("extract policy..");
+		//
 
 		let policy = self.extract_policy();
 
+		//
+		self.dynamic_programming_s = start_time.elapsed().as_secs_f64();
 		println!("success!");
+		//
 
 		policy
 	}
@@ -258,12 +285,6 @@ impl<'a, F: PRMFuncs<N>, const N: usize> PRM<'a, F, N> {
 	pub fn print_summary(&self) {
 		println!("number of iterations:{}", self.n_it);
 		self.graph.print_summary();
-	}
-
-	fn heuristic_radius(&self, max_step: f64, search_radius: f64) -> f64 {
-		let n = self.graph.nodes.len() as f64;
-		let s = search_radius * (n.ln()/n).powf(1.0/(N as f64));
-		if s < max_step { s } else { max_step }
 	}
 }
 

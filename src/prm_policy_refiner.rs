@@ -13,6 +13,7 @@ use crate::prm::*;
 use queues::*;
 use bitvec::prelude::*;
 use priority_queue::PriorityQueue;
+use std::time::Instant;
 
 pub enum RefinmentStrategy {
     Reparent(f64),
@@ -68,6 +69,8 @@ pub struct PRMPolicyRefiner <'a, F: PRMFuncs<N>, const N: usize> {
 	pub fns: &'a F,
 	pub belief_graph: &'a BeliefGraph<N>,
 	pub compatibilities: Vec<Vec<bool>>,
+	// debug / benchmark
+	pub refinement_s: f64
 }
 
 impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {	
@@ -77,6 +80,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			fns,
 			belief_graph,
 			compatibilities: compute_compatibility(&belief_graph.reachable_belief_states, &fns.world_validities()),
+			refinement_s: 0.0
 		}
 	}
 
@@ -88,6 +92,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 
 		// option 1
 		println!("refine policy..");
+		let start_time = Instant::now();
 
 		let (path_pieces, skeleton) = self.policy.decompose();
 		let mut trees = vec![];
@@ -112,7 +117,8 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 
 		let policy = self.recompose(&trees, &skeleton);
 
-		println!("success! (number of nodes:{}, number of leafs:{})", policy.nodes.len(), policy.leafs.len());
+		println!("success! (path-tree cost:{}, number of nodes:{}, number of leafs:{})", policy.expected_costs, policy.nodes.len(), policy.leafs.len());
+		self.refinement_s = start_time.elapsed().as_secs_f64();
 
 		(policy, trees)
 	}
@@ -188,6 +194,7 @@ impl <'a, F: PRMFuncs<N>, const N: usize> PRMPolicyRefiner<'a, F, N> {
 			for (from, to) in pairwise_iter(&shortcut_states) {
 				should_commit = should_commit && self.is_transition_valid(from, to, tree.belief_state_id); // TODO: can be optimized to avoid rechecking 2 times the nodes
 			}
+			should_commit = should_commit && self.is_transition_valid(shortcut_states.last().unwrap(), interval_end_state, tree.belief_state_id); // needed otherwise last transition is unchecked!
 
 			// commit if valid
 			if should_commit {

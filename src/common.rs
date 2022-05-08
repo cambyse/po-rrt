@@ -167,6 +167,21 @@ impl<const N: usize> Policy<N> {
 		}
 	}
 
+	pub fn print_cpp(&self) {
+		for &leaf in &self.leafs {
+			let mut current = Some(leaf);
+
+			println!("{{");
+
+			while let Some(current_id) = current {
+				let current_node = &self.nodes[current_id];
+				println!("{{{}, {}}},", current_node.state[0], current_node.state[1]);
+				current = current_node.parent;
+			}
+			println!("}},");
+		}
+	}
+
 }
 
 #[allow(clippy::style)]
@@ -202,6 +217,7 @@ pub fn steer<const N: usize>(from: &[f64;N], to: &mut [f64;N], max_step: f64) {
 
 	if step > max_step {
 		let lambda = max_step / step;
+
 		for i in 0..N {
 			to[i] = from[i] + (to[i] - from[i]) * lambda;
 		}
@@ -339,17 +355,17 @@ pub fn hash(bs: &[f64]) -> usize
 }
 
 pub fn heuristic_radius(n_nodes: usize, max_step: f64, search_radius: f64, dim: usize) -> f64 {
-	// new implementation rationale:
+	// new implementation rationale: (good for 2d examples!)
 	// - allow 2 x more than max radius to allow moreagrssive simplification early on
 	// - use log10 instead of ln to keep thenumber of radius more constant in the regime where s < 2.0 x max_radius
-	let n = n_nodes as f64;
-	let s = search_radius * (n.log10()/n).powf(1.0/(dim as f64));
-	if s < 2.0 * max_step { s } else { 2.0 * max_step }
+	//let n = n_nodes as f64;
+	//let s = search_radius * (n.log10()/n).powf(1.0/(dim as f64));
+	//if s < 2.0 * max_step { s } else { 2.0 * max_step }
 
-	// previous implementation
-	/*let n = n_nodes as f64;
+	// previous implementation: good for robot arm!
+	let n = n_nodes as f64;
 	let s = search_radius * (n.ln()/n).powf(1.0/(dim as f64));
-	if s < max_step { s } else { max_step }*/
+	if s < max_step { s } else { max_step }
 }
 
 #[derive(Debug)]

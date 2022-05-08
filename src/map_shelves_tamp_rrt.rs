@@ -66,7 +66,8 @@ impl<'a> GoalFuncs<2> for ObservationGoal<'a> {
 
 pub enum TampSearch {
 	AStar,
-	BranchAndBound
+	BranchAndBound,
+	BranchAndBoundMultipleViewPoints
 }
 
 #[derive(Clone)]
@@ -155,6 +156,7 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 		match search_method {
 			TampSearch::AStar => self.plan_astar(start, initial_belief_state, max_step, search_radius, n_iter_min, n_iter_max),
 			TampSearch::BranchAndBound => self.plan_branch_bound(start, initial_belief_state, max_step, search_radius, n_iter_min, n_iter_max),
+			TampSearch::BranchAndBoundMultipleViewPoints => self.plan_branch_bound_multiple_viewpoints(start, initial_belief_state, max_step, search_radius, n_iter_min, n_iter_max),
 		}
 	}	
 
@@ -263,6 +265,145 @@ impl<'a> MapShelfDomainTampRRT<'a> {
 				}
 				else {
 					println!("prune!");
+				}
+			}
+
+			// save leaf node
+			if u.remaining_zones.is_empty() {
+				if u.expected_cost < best_expected_cost {
+					println!("found improving solution! with cost:{}", u.expected_cost);
+					best_expected_cost = u.expected_cost;
+				}
+				solution_nodes.insert(OrderedFloat(u.expected_cost), u);
+			}
+		}
+
+		println!("it:{}, nodes:{}", it, search_tree.nodes.len());
+		println!("n leafs:{}", search_tree.nodes.iter().filter(|&n| n.remaining_zones.is_empty() ).count());
+
+		let (best_expected_cost, best_final_node) = solution_nodes.first_key_value().expect("No solution found!");
+		let policy = self.build_policy(&best_final_node, &search_tree);
+
+		println!("best expected costs before shortcut:{}", best_expected_cost);
+		println!("policy expected cost after shortcut:{}", policy.expected_costs);
+
+		Ok(policy)
+	}
+
+	fn plan_branch_bound_multiple_viewpoints(&mut self, &start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize) -> Result<Policy<2>, &'static str> {
+		let mut solution_nodes = BTreeMap::new();
+		let mut q = vec![];
+
+		check_belief_state(initial_belief_state);
+
+		let root_node = SearchNode{
+			id: 0,
+			target_zone_id: None,
+			parent: None,
+			children: Vec::new(),
+			remaining_zones: shuffled(&(0..self.map_shelves_domain.n_zones()).collect(), &mut self.discrete_sampler),
+			start_state: start,
+			observation_state: start,
+			pickup_state: start,
+			path_to_observation: vec![],
+			path_to_pickup: vec![],
+			path_to_start_cost: 0.0,
+			path_to_observation_cost: 0.0,
+			path_to_pickup_cost: 0.0,
+			reaching_probability: 1.0,
+			belief_state: initial_belief_state.clone(),
+			expected_cost: 0.0
+		};
+
+		q.push(root_node.id);
+
+		let mut search_tree = SearchTree{
+			nodes: vec![root_node]
+		};
+
+		// rrt 
+		let checker = Funcs{m:&self.map_shelves_domain};
+		let mut rrt = RRT::new(self.continuous_sampler.clone(), &checker);
+
+		let mut best_expected_cost = std::f64::INFINITY;
+		let mut it = 0;
+		let mut rrt_queries_it = 0;
+		while !q.is_empty() {
+			it+=1;
+
+			println!("iteration:{}", it);
+
+			let u_id = q.pop().unwrap();
+			let u = search_tree.nodes[u_id].clone();
+
+			for target_zone_id in &u.remaining_zones {
+				let mut remaining_zones = shuffled(&u.remaining_zones, &mut self.discrete_sampler);
+				remaining_zones.retain(|zone_id| zone_id != target_zone_id);
+
+				// compute belief state and reaching probability
+				let mut v_belief_state = u.belief_state.clone();
+				if let Some(u_target_zone_id) = u.target_zone_id {
+					v_belief_state[u_target_zone_id] = 0.0; // we are at thisstage on theskeleton if the object was not there
+				}
+				v_belief_state = normalize_belief(&v_belief_state);
+				let reaching_probability = u.reaching_probability * transition_probability(&u.belief_state, &v_belief_state);
+
+				// Query motion planner
+				// piece 1: go to target observe zone
+				let observation_goal = ObservationGoal{m: &self.map_shelves_domain, zone_id: *target_zone_id};
+				
+				let (observation_planning_results, _) = rrt.plan_several(u.observation_state, &observation_goal, max_step, search_radius, n_iter_min, n_iter_max, 1.0, &mut self.discrete_sampler);
+				rrt_queries_it = rrt_queries_it+1;
+
+				println!("number of paths to observations:{}", observation_planning_results.len());
+				for (observation_path, observation_path_cost) in observation_planning_results {
+
+					let v_observation_state = *observation_path.last().unwrap();
+
+					// piece 2: object is here: plan to reach goal corresponding to 
+					let zone_position = self.map_shelves_domain.get_zone_positions()[*target_zone_id];
+					let pickup_goal = SquareGoal::new(vec![(zone_position, bitvec![1])], self.goal_radius);
+
+					let (pickup_planning_result, _) = rrt.plan(v_observation_state, &pickup_goal, max_step, search_radius, n_iter_min, n_iter_max);
+					let (pickup_path, pickup_path_cost) = pickup_planning_result.expect("no pickup path found!");
+					let v_pickup_state = *pickup_path.last().unwrap();
+					rrt_queries_it = rrt_queries_it+1;
+
+					//println!("rrt_queries_it:{}", rrt_queries_it);
+
+					// compute expected cost to start
+					let pickup_probability = v_belief_state[*target_zone_id];
+					let expected_cost = u.expected_cost + reaching_probability * (observation_path_cost + pickup_probability * pickup_path_cost);
+
+					// create next node
+					let v_id = search_tree.add_node(
+						u.id,
+						*target_zone_id,
+						&remaining_zones,
+						// states
+						u.observation_state,
+						v_observation_state,
+						v_pickup_state,
+						// paths
+						observation_path,
+						pickup_path,
+						// costs
+						u.path_to_observation_cost,
+						observation_path_cost,
+						pickup_path_cost,
+						// probabilities
+						reaching_probability,
+						&v_belief_state,
+						expected_cost
+					);
+					
+					// addonly prune if lower bound of costs greater than solution already found
+					if expected_cost < best_expected_cost {
+						q.push(v_id);
+					}
+					else {
+						println!("prune!");
+					}
 				}
 			}
 
@@ -589,6 +730,42 @@ fn test_plan_on_map2_astar() {
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
 	m2.save("results/test_map1_2_goals_tamp_rrt");
+}
+
+#[test]
+fn test_plan_on_map2_bb() {
+	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
+
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
+	
+	let initial_belief_state = vec![1.0/2.0; 2];
+	let policy = tamp_rrt.plan_branch_bound(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 2500, 10000);
+	let policy = policy.expect("nopath tree found!");
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.save("results/test_map1_2_goals_tamp_rrt_bb");
+}
+
+#[test]
+fn test_plan_on_map2_bb_multiple() {
+	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
+
+	let mut tamp_rrt = MapShelfDomainTampRRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
+	
+	let initial_belief_state = vec![1.0/2.0; 2];
+	let policy = tamp_rrt.plan_branch_bound_multiple_viewpoints(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 2500, 10000);
+	let policy = policy.expect("nopath tree found!");
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_zones_observability();
+	m2.draw_policy(&policy);
+	m2.save("results/test_map1_2_goals_tamp_rrt_bb_multiple");
 }
 
 #[test]

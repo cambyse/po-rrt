@@ -4,6 +4,8 @@ use crate::common::*;
 use crate::nearest_neighbor::*;
 use crate::sample_space::*;
 use crate::map_shelves_io::*;
+use std::collections::HashSet;
+use std::convert::TryInto;
 use std::{any, cmp::min, collections::BTreeMap, vec::Vec};
 use core::cell::RefCell;
 use std::rc::{Weak, Rc};
@@ -88,6 +90,13 @@ impl<'a, F: RTTFuncs<N>, const N: usize> RRT<'a, F, N> {
 		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_min, n_iter_max);
 
 		(self.get_best_solution(&rrttree, &final_node_ids), rrttree)
+	}
+
+	pub fn plan_several(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
+		max_step: f64, search_radius: f64, n_iter_min: usize, n_iter_max: usize, solution_ratio: f64, sampler: &mut DiscreteSampler) -> (Vec<(Vec<[f64; N]>, f64)>, RRTTree<N>) {
+		let (rrttree, final_node_ids) = self.grow_tree(start, goal, max_step, search_radius, n_iter_min, n_iter_max);
+
+		(self.get_solutions(&rrttree, &final_node_ids, solution_ratio, sampler), rrttree)
 	}
 
 	fn grow_tree(&mut self, start: [f64; N], goal: &impl GoalFuncs<N>,
@@ -183,10 +192,57 @@ impl<'a, F: RTTFuncs<N>, const N: usize> RRT<'a, F, N> {
 			.ok_or("No solution found")
 	}
 
+	fn get_solutions(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize], solution_ratio: f64, sampler: &mut DiscreteSampler) -> Vec<(Vec<[f64; N]>, f64)> {
+		// solution_ratio: ratio of solutions to keep
+
+		let firstly_final_node_ids = self.get_firstly_final_node_ids(rrttree, final_node_ids);
+
+		//let n_solutions_to_keep = (solution_ratio * final_node_ids.len() as f64) as usize;
+		/*
+		let mut leaf_ids:Vec<usize> = final_node_ids.into();
+		let mut chosen_leaf_ids = vec![];
+		chosen_leaf_ids.reserve(firstly_final_node_ids.len());
+
+
+		for _ in 0..n_solutions_to_keep {
+			let leaf_index = sampler.sample(leaf_ids.len());
+			chosen_leaf_ids.push(leaf_ids[leaf_index]);
+			leaf_ids.swap_remove(leaf_index);
+		}*/
+
+		firstly_final_node_ids.iter()
+			.map(|id| {
+				let path = rrttree.get_path_to(*id);
+				let cost = self.get_path_cost(&path);
+				(path, cost)
+			})
+			.map(|(p, c)| (p, c))
+			.collect()
+	}
+
 	fn get_path_cost(&self, path: &[[f64; N]]) -> f64 {
 		pairwise_iter(path)
 			.map(|(a,b)| self.fns.cost_evaluator(a,b))
 			.sum()
+	}
+
+	fn get_firstly_final_node_ids(&self, rrttree: &RRTTree<N>, final_node_ids: &[usize] ) -> Vec<usize> {
+		let mut final_node_set = HashSet::new();
+
+		for id in final_node_ids {
+			final_node_set.insert(id);
+		}
+
+		let mut firstly_final_node_set = HashSet::new();
+		for id in final_node_ids {
+			let mut first_id = *id;
+			while final_node_set.contains(&rrttree.nodes[first_id].parent_id.unwrap_or(0)) {
+				first_id = rrttree.nodes[first_id].parent_id.unwrap();
+			}
+			firstly_final_node_set.insert(first_id);
+		}
+
+		firstly_final_node_set.into_iter().collect::<Vec<usize>>()
 	}
 }
 
@@ -300,5 +356,62 @@ fn test_plan_on_map7_observation_point() {
 	m2.draw_zones_observability();
 	m2.draw_path(path_result.as_slice(), colors::BLACK);
 	m2.save("results/map7/test_map7_rrt_to_observation_point");
+}
+
+
+#[test]
+fn test_plan_on_map7_observation_point_multiple_solutions() {
+	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
+	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
+
+	struct Funcs<'a>  {
+		m: &'a MapShelfDomain,
+	}
+
+	impl<'a> RTTFuncs<2> for Funcs<'a> {
+		fn state_validator(&self, state: &[f64; 2]) -> bool {
+			self.m.is_state_valid(state) == Belief::Free
+		}
+
+		fn transition_validator(&self, from: &[f64; 2], to: &[f64; 2]) -> bool {
+			self.m.get_traversed_space(from, to) == Belief::Free
+		}
+	}
+
+	pub struct ObservationGoal<'a> {
+		m: &'a MapShelfDomain,
+		zone_id: usize
+	}
+
+	impl<'a> GoalFuncs<2> for ObservationGoal<'a> {
+		fn goal(&self, state: &[f64; 2]) -> Option<WorldMask> {	
+			if self.m.is_zone_observable(state, self.zone_id) {
+				return Some(bitvec![1]);
+			}
+			None
+		}
+	
+		fn goal_example(&self, _:usize) -> [f64; 2] {
+			self.m.get_zone_positions()[self.zone_id]
+		}
+	}
+
+	let goal = ObservationGoal{m: &m, zone_id: 2};
+
+	let checker = Funcs{m:&m};
+	let mut rrt = RRT::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), &checker);
+
+	let (path_results, rrttree) = rrt.plan_several([0.0, -0.8], &goal, 0.1, 2.0, 2500, 10000, 0.2, &mut DiscreteSampler::new());
+
+	assert!(path_results.len() > 2); // why do we need to clone?!
+
+	let mut m2 = m.clone();
+	m2.resize(5);
+	m2.draw_tree(&rrttree);
+	m2.draw_zones_observability();
+	for (path, _) in &path_results {
+		m2.draw_path(path.as_slice(), colors::BLACK);
+	}
+	m2.save("results/map7/test_map7_rrt_to_observation_point_multiple_solutions");
 }
 }
