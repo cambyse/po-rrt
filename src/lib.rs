@@ -20,3 +20,4 @@ pub mod qmdp_policy_extractor;
 pub mod pto_policy_refiner;
 pub mod pto_c;
 pub mod map_shelves_tamp_rrt;
+pub mod map_shelves_tamp_prm;

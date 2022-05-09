@@ -47,21 +47,31 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 			// First sample state and world
 			let new_state = self.continuous_sampler.sample();
 			
-			// Second, retrieve closest node for sampled world and steer from there
-			//let kd_from = self.kdtree.nearest_neighbor(new_state); // log n
+			// Handle grow start case
+			if self.graph.nodes.is_empty() {
+				self.graph.add_node(new_state, 0);
+				self.kdtree.reset(new_state);
+				continue
+			}
 
-			// Third, add node
+			// Add node
 			let new_node_id = self.graph.add_node(new_state, 0);
 			let new_node = &self.graph.nodes[new_node_id];
 
-			// Fourth, we find the neighbors in a specific radius of new_state.
+			if self.graph.nodes.is_empty() {
+				self.graph.add_node(new_state, 0);
+				self.kdtree.reset(new_state);
+				continue;
+			}
+
+			// We find the neighbors in a specific radius of new_state.
 			let radius = heuristic_radius(self.graph.nodes.len(), max_step, search_radius, N);
 
 			//if i%100 == 0{
 			//	println!("radius:{}", radius);
 			//}
 
-			// Fifth we connect to neighbors 
+			// Finaly we connect to neighbors 
 			let neighbour_ids: Vec<usize> = self.kdtree.nearest_neighbors(new_state, radius).iter()
 			.map(|&kd_node| kd_node.id)
 			.collect();
@@ -103,140 +113,6 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 		extract_path(&self.graph, kd_start.id, &cost_to_goal, self.fns)
 	}
 
-	/*
-	#[allow(clippy::style)]
-	pub fn plan_belief_space(&mut self, start_belief_state: &BeliefState) -> Policy<N> {
-		assert_belief_state_validity(start_belief_state);
-		
-		//
-		println!("build belief graph..");
-		let start_time = Instant::now();
-		//
-
-		self.build_belief_graph(start_belief_state);
-
-		//
-		self.belief_space_expansion_s = start_time.elapsed().as_secs_f64();
-		println!("compute expected costs to goal..");
-		let start_time = Instant::now();
-		//
-
-		self.compute_expected_costs_to_goals();
-		
-		//
-		println!("extract policy..");
-		//
-
-		let policy = self.extract_policy();
-
-		//
-		self.dynamic_programming_s = start_time.elapsed().as_secs_f64();
-		println!("success!");
-		//
-
-		policy
-	}
-
-	#[allow(clippy::style)]
-	pub fn build_belief_graph(&mut self, start_belief_state: &BeliefState) {
-		// build belief state graph
-		let reachable_belief_states = self.fns.reachable_belief_states(start_belief_state);
-		let world_validities = self.fns.world_validities();
-		let compatibilities = compute_compatibility(&reachable_belief_states, &world_validities);
-
-		let mut belief_space_graph = BeliefGraph::new(Vec::new(), reachable_belief_states.clone());
-
-		//let mut belief_space_graph: BeliefGraph<N> = BeliefGraph{nodes: Vec::new(), reachable_belief_states: reachable_belief_states.clone()};
-		let mut node_to_belief_nodes: Vec<Vec<Option<usize>>> = vec![vec![None; reachable_belief_states.len()]; self.graph.n_nodes()];
-		
-		// build nodes
-		for (id, node) in self.graph.nodes.iter().enumerate() {
-			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
-				let belief_node_id = belief_space_graph.add_node(node.state, belief_state.clone(), belief_id, BeliefNodeType::Unknown);
-
-				if compatibilities[belief_id][node.validity_id] {
-					node_to_belief_nodes[id][belief_id] = Some(belief_node_id);
-					belief_space_graph.nodes[belief_node_id].children.reserve(node.children.len());
-					belief_space_graph.nodes[belief_node_id].parents.reserve(node.parents.len());
-				}
-			}
-		}
-
-		// build transitions due to observations (observation edges)
-		for (id, node) in self.graph.nodes.iter().enumerate() {
-			for (belief_id, belief_state) in reachable_belief_states.iter().enumerate() {
-				let children_belief_states = self.fns.observe(&node.state, &belief_state);
-				let parent_belief_node_id = node_to_belief_nodes[id][belief_id];
-
-				for child_belief_state in &children_belief_states {
-					if hash(belief_state) != hash(child_belief_state) {
-						// debug
-						//let p = transition_probability(&belief_state, &child_belief_state);
-						//assert!(p > 0.0);
-						//
-
-						let child_belief_state_id = belief_space_graph.belief_id(&child_belief_state);
-						let child_belief_node_id = node_to_belief_nodes[id][child_belief_state_id];
-
-						if let (Some(parent_id), Some(child_id)) = (parent_belief_node_id, child_belief_node_id) {
-							belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Observation;
-							belief_space_graph.add_edge(parent_id, child_id);
-						}
-					}
-				}
-			}
-		}
-
-		// build possible geometric edges (action edges)
-		for (id, node) in self.graph.nodes.iter().enumerate() {
-			for (belief_id, _) in reachable_belief_states.iter().enumerate() {
-				if let Some(parent_id) = node_to_belief_nodes[id][belief_id] {
-					if belief_space_graph.nodes[parent_id].node_type == BeliefNodeType::Observation {
-						continue;
-					}
-
-					for child_edge in &node.children {
-						if let Some(child_id) = node_to_belief_nodes[child_edge.id][belief_id] {
-
-							let parent_belief_id = belief_space_graph.nodes[parent_id].belief_id;
-							let child_validity_id = child_edge.validity_id;
-							if compatibilities[parent_belief_id][child_validity_id] {
-								belief_space_graph.nodes[parent_id].node_type = BeliefNodeType::Action;
-								belief_space_graph.add_edge(parent_id, child_id);
-							}
-						}
-					}
-				}
-			}
-		}
-
-		self.node_to_belief_nodes = node_to_belief_nodes;
-		self.belief_graph = belief_space_graph;
-	}
-
-	pub fn compute_expected_costs_to_goals(&mut self) {
-		// create belief node ids in belief space
-		let mut final_belief_state_node_ids: Vec<usize> = Vec::new();
-		for (&final_id, validity) in self.conservative_reachability.final_nodes_with_validities() {
-			for belief_node_id in self.node_to_belief_nodes[final_id].iter().flatten() {
-				let belief_state = &self.belief_graph.nodes[*belief_node_id].belief_state;
-				if is_compatible(belief_state, validity) {
-					final_belief_state_node_ids.push(*belief_node_id);
-				}
-			}
-		}
-
-		// DP in belief state
-		self.expected_costs_to_goals = conditional_dijkstra(&self.belief_graph, &final_belief_state_node_ids, &|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
-	}
-
-	pub fn extract_policy(&self) -> Policy<N> {
-		//let mut policy = extract_policy(&self.belief_graph, &self.expected_costs_to_goals, &|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b) );
-		//policy.compute_expected_costs_to_goals(&|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
-		//println!("COST:{}", policy.expected_costs);
-
-		extract_policy(&self.belief_graph, &self.expected_costs_to_goals, &|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b) )
-	}*/
 
 	pub fn print_summary(&self) {
 		//println!("number of iterations:{}", self.n_it);

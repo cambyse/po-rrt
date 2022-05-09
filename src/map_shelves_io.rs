@@ -72,7 +72,7 @@ pub struct MapShelfDomain {
 	n_zones: usize,
 	world_validities: Vec<WorldMask>,
 	zone_positions: Vec<[f64;2]>,
-	visibility_distance: f64
+	pub visibility_distance: f64
 }
 
 // Given N zones, there are 2^N possible worlds
