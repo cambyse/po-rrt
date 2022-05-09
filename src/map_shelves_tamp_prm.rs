@@ -157,11 +157,13 @@ impl<'a> ModeTree<'a> {
 		id
 	}
 
-	fn get_transitions(&mut self, mode_id: usize, target_zone_id: usize, continuous_sampler: &ContinuousSampler<2>, map_shelves_domain: &'a MapShelfDomain) -> (usize, usize) {
+	fn get_transitions(&mut self, mode_id: usize, target_zone_id: usize, continuous_sampler: &ContinuousSampler<2>, map_shelves_domain: &'a MapShelfDomain) ->Vec<usize> {
 		let mode = &mut self.modes[mode_id];
 
-		let object_there_transition_id = match mode.get_outcoming_transition(target_zone_id, true) {
-			Some(id) => id,
+		let mut successor_modes = Vec::new();
+
+		match mode.get_outcoming_transition(target_zone_id, true) {
+			Some(id) => successor_modes.push(id),
 			_ => {
 				// create new mode 
 				let mut succ_belief_state = vec![0.0; mode.belief_state.len()];
@@ -185,45 +187,50 @@ impl<'a> ModeTree<'a> {
 				// update the mode
 				self.modes[mode_id].add_outcoming_transition(target_zone_id, transition_index, true);
 
-				transition_index 
+				successor_modes.push(transition_index);
 			}
 		};
 
 		let mode = &self.modes[mode_id];
+
 		// case object not there
-		let object_not_there_transition_id = match mode.get_outcoming_transition(target_zone_id, false) {
-			Some(id) => id,
+		match mode.get_outcoming_transition(target_zone_id, false) {
+			Some(id) => successor_modes.push(id),
 			_ => {
 				// create new mode 
 				let mut succ_belief_state = mode.belief_state.clone();
 				succ_belief_state[target_zone_id] = 0.0; 
-				succ_belief_state = normalize_belief(&succ_belief_state);
 
-				let mut remaining_zones = mode.remaining_zones.clone();
-				remaining_zones.retain(|zone_id| *zone_id != target_zone_id);
-
-				let succ_belief_hash = hash(&succ_belief_state);
-				let successor_mode_id = match self.mode_hash_map.get(&succ_belief_hash) {
-					Some(id) => *id,
-					None => {
-						let succ_reaching_probability = mode.reaching_probability * transition_probability(&mode.belief_state, &succ_belief_state);
-						let mut remaining_zones = mode.remaining_zones.clone();
-						remaining_zones.retain(|zone_id| *zone_id != target_zone_id);
-						self.add_mode(&remaining_zones, succ_reaching_probability, &succ_belief_state, continuous_sampler.clone(), map_shelves_domain)
-					} 
-				};
-
-				// create new transition
-				let transition_index = self.add_transition(target_zone_id, mode_id, successor_mode_id, true);
+				if succ_belief_state.iter().sum::<f64>() > 0.0 {
 				
-				// update the mode
-				self.modes[mode_id].add_outcoming_transition(target_zone_id, transition_index, false);
+					succ_belief_state = normalize_belief(&succ_belief_state);
 
-				transition_index 
+					let mut remaining_zones = mode.remaining_zones.clone();
+					remaining_zones.retain(|zone_id| *zone_id != target_zone_id);
+
+					let succ_belief_hash = hash(&succ_belief_state);
+					let successor_mode_id = match self.mode_hash_map.get(&succ_belief_hash) {
+						Some(id) => *id,
+						None => {
+							let succ_reaching_probability = mode.reaching_probability * transition_probability(&mode.belief_state, &succ_belief_state);
+							let mut remaining_zones = mode.remaining_zones.clone();
+							remaining_zones.retain(|zone_id| *zone_id != target_zone_id);
+							self.add_mode(&remaining_zones, succ_reaching_probability, &succ_belief_state, continuous_sampler.clone(), map_shelves_domain)
+						} 
+					};
+
+					// create new transition
+					let transition_index = self.add_transition(target_zone_id, mode_id, successor_mode_id, true);
+					
+					// update the mode
+					self.modes[mode_id].add_outcoming_transition(target_zone_id, transition_index, false);
+
+					successor_modes.push(transition_index);
+				}
 			}
 		};
 
-		(object_there_transition_id, object_not_there_transition_id)
+		successor_modes
 	}
 }
 
@@ -276,19 +283,24 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 			let mode_id = self.discrete_sampler.sample(search_tree.modes.len());
 			let mode = &mut search_tree.modes[mode_id];
 
+			println!("sampled mode:{}, of belief:{:?}", mode_id, &mode.belief_state);
+
 			// grow the prm
 			mode.prm.grow_graph(max_step, search_radius, 100);
 
 			// sample transitions nodes
 			for _j in 0..10 {
 				let mode = &search_tree.modes[mode_id];
-				let target_zone_index = self.discrete_sampler.sample(mode.remaining_zones.len());
-				let target_zone_id = search_tree.modes[mode_id].remaining_zones[target_zone_index];
 
-				let (object_there_transition_id, object_not_there_transition_id) = search_tree.get_transitions(mode_id, target_zone_id, &self.continuous_sampler, &self.map_shelves_domain);
-				
-				// sample transition
-				let transition_sample = self.sample_observation_of_zone(target_zone_id);
+				if !mode.remaining_zones.is_empty() {
+					let target_zone_index = self.discrete_sampler.sample(mode.remaining_zones.len());
+					let target_zone_id = search_tree.modes[mode_id].remaining_zones[target_zone_index];
+	
+					let transitions = search_tree.get_transitions(mode_id, target_zone_id, &self.continuous_sampler, &self.map_shelves_domain);
+					
+					// sample transition
+					let transition_sample = self.sample_observation_of_zone(target_zone_id);
+				}
 			}
 		}
 
@@ -468,7 +480,7 @@ fn test_plan_on_map2_prm() {
 	let mut tamp_rrt = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
 	
 	let initial_belief_state = vec![1.0/2.0; 2];
-	let policy = tamp_rrt.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 10000);
+	let policy = tamp_rrt.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 10);
 	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();

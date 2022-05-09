@@ -28,7 +28,8 @@ pub struct Metrics{
 
 fn main()
 {
-	main_2d_map4();
+	//main_2d_map4();
+	test_plan_on_map_benchmark_8_goals(2500);
 }
 
 fn main_2d_map4()
