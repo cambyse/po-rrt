@@ -16,6 +16,9 @@ use ordered_float::*;
 use std::collections::HashMap;
 //use std::collections::HashSet;
 
+fn is_final(belief_state: &BeliefState) -> bool {
+	belief_state.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap() >= &0.999
+}
 
 fn normalize_belief(unnormalized_belief_state: &BeliefState) -> BeliefState {
 	let sum = unnormalized_belief_state.iter().fold(0.0, |sum, p| sum + p);
@@ -70,6 +73,7 @@ pub struct Mode<'a> {
 	pub belief_state: BeliefState,
 	// prm
 	pub prm: PRM<'a, MapShelfDomain, 2>,
+	pub final_node_ids: Vec<usize>,
 	// convenience hashes
 	object_there_transition_hash_map: HashMap<usize, usize>,
 	object_not_there_transition_hash_map: HashMap<usize, usize>
@@ -104,7 +108,7 @@ pub struct ModeTransition {
 	pub from_mode_id: usize,
 	pub to_mode_id: usize,
 	pub observation_transitions: Vec<[usize;2]>,
-	pub observation: bool
+	pub observation: bool,
 }
 
 pub struct ModeTree<'a> {
@@ -142,7 +146,8 @@ impl<'a> ModeTree<'a> {
 			reaching_probability,
 			belief_state: belief_state.clone(),
 			prm: PRM::new(continuous_sampler, map_shelves_domain),
-			object_there_transition_hash_map: HashMap::new(), // zone to transition index
+			final_node_ids: vec![],
+			object_there_transition_hash_map: HashMap::new(),    // zone to transition index
 			object_not_there_transition_hash_map: HashMap::new() // zone to transition index
 		};
 
@@ -190,10 +195,17 @@ impl<'a> ModeTree<'a> {
 						let succ_reaching_probability = mode.reaching_probability * transition_probability(&mode.belief_state, &succ_belief_state);
 						let mut remaining_zones = mode.remaining_zones.clone();
 						remaining_zones.retain(|zone_id| *zone_id != target_zone_id);
-						self.add_mode(&remaining_zones, succ_reaching_probability, &succ_belief_state, continuous_sampler.clone(), map_shelves_domain)
+						let mode_id = self.add_mode(&remaining_zones, succ_reaching_probability, &succ_belief_state, continuous_sampler.clone(), map_shelves_domain);
+
+						// add initial goal state
+						let mode = &mut self.modes[mode_id];
+						let goal_id = mode.prm.add_sample(map_shelves_domain.get_zone_positions()[target_zone_id], 0.0, 0.0);
+						mode.final_node_ids.push(goal_id);
+
+						mode_id
 					} 
 				};
-				
+
 				// create new transition
 				let transition_index = self.add_transition(target_zone_id, mode_id, successor_mode_id, true);
 				
@@ -228,7 +240,16 @@ impl<'a> ModeTree<'a> {
 							let succ_reaching_probability = mode.reaching_probability * transition_probability(&mode.belief_state, &succ_belief_state);
 							let mut remaining_zones = mode.remaining_zones.clone();
 							remaining_zones.retain(|zone_id| *zone_id != target_zone_id);
-							self.add_mode(&remaining_zones, succ_reaching_probability, &succ_belief_state, continuous_sampler.clone(), map_shelves_domain)
+							let mode_id = self.add_mode(&remaining_zones, succ_reaching_probability, &succ_belief_state, continuous_sampler.clone(), map_shelves_domain);
+
+							if is_final(&succ_belief_state) {
+								// add initial goal state
+								let mode = &mut self.modes[mode_id];
+								let goal_id = mode.prm.add_sample(map_shelves_domain.get_zone_positions()[target_zone_id], 0.0, 0.0);
+								mode.final_node_ids.push(goal_id);
+							}
+
+							mode_id
 						} 
 					};
 
@@ -257,7 +278,8 @@ pub struct MapShelfDomainTampPRM<'a> {
 	n_it: usize,
 	// mode tree
 	pub search_tree: ModeTree<'a>,
-	pub belief_graph: BeliefGraph<2>
+	pub belief_graph: BeliefGraph<2>,
+	expected_costs_to_goals: Vec<f64>,
 }
 
 impl<'a> MapShelfDomainTampPRM<'a> {
@@ -270,18 +292,31 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 			   goal_radius,
 			   n_it: 0,
 			   search_tree: ModeTree::new(),
-			   belief_graph: BeliefGraph::new(Vec::new(), Vec::new())}
+			   belief_graph: BeliefGraph::new(Vec::new(), Vec::new()),
+			   expected_costs_to_goals: Vec::new()
+			}
 	}
 
 	pub fn plan(&mut self, start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter_max: usize) -> Result<Policy<2>, &'static str> {
 		self.grow_mm_prm(start, initial_belief_state, max_step, search_radius, n_iter_max);
 
-		//self.build_belief_graph();
+		println!("build belief graph..");
 
-		Ok(Policy{
+		let final_belief_node_ids = self.build_belief_graph();
+
+		println!("dynamic programming..");
+
+		self.compute_expected_costs_to_goals(&final_belief_node_ids);
+
+		println!("extract policy..");
+
+		//let policy = self.extract_policy();
+
+		//Ok(policy)
+		Ok(Policy {
 			expected_costs: 0.0,
-			leafs: vec![],
-			nodes: vec![]
+			leafs: Vec::new(),
+			nodes: Vec::new()
 		})
 	}	
 
@@ -294,9 +329,9 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 		self.search_tree.belief_states = belief_states;
 		self.search_tree.belief_hash_map = belief_hash_map;
 
-
 		let remaining_zones: Vec<usize> = (0..self.map_shelves_domain.n_zones()).collect();
 		self.search_tree.add_mode(&remaining_zones, 1.0,&initial_belief_state.clone(), self.continuous_sampler.clone(), self.map_shelves_domain);
+		self.search_tree.modes[0].prm.add_sample([0.0, 0.0], 0.0, 0.0);
 
 		let mut i = 0;
 		while i < n_iter_max {
@@ -338,6 +373,72 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 		}
 	}
 
+	fn build_belief_graph(&mut self) -> Vec<usize> {
+		self.belief_graph = BeliefGraph::new(Vec::new(), self.search_tree.belief_states.clone());
+		
+		let mut final_belief_node_ids = Vec::new();
+		let mut node_mapping_per_mode = Vec::<HashMap<usize, usize>>::new();
+		node_mapping_per_mode.reserve(self.search_tree.belief_states.len()); // prm node to belief node id
+
+		// add nodes
+		for mode in &self.search_tree.modes {
+			let belief_id = self.belief_graph.belief_states_to_id[&hash(&mode.belief_state)];
+
+			let mut node_to_belief_node_id = HashMap::new();
+
+			// add nodes
+			for (node_id, node) in mode.prm.graph.nodes.iter().enumerate() {
+				let belief_node_id = self.belief_graph.add_node(node.state, mode.belief_state.clone(), belief_id, BeliefNodeType::Action); // set action before overriding it
+				node_to_belief_node_id.insert(node_id, belief_node_id);
+			}
+
+			// add action edges
+			for (node_id, node) in mode.prm.graph.nodes.iter().enumerate() {
+				for children in &node.children {
+					let belief_node_id = node_to_belief_node_id[&node_id];
+					let children_belief_node_id = node_to_belief_node_id[&children.id];
+					self.belief_graph.add_edge(belief_node_id, children_belief_node_id);
+				}
+				
+			}
+
+			// convert final belief nodes
+			for final_node_id in &mode.final_node_ids {
+				final_belief_node_ids.push(node_to_belief_node_id[&final_node_id]);
+			}
+
+			node_mapping_per_mode.push(node_to_belief_node_id);
+		}
+
+		// add observation edges
+		for transition in &self.search_tree.mode_transitions {
+			for transition_edge in &transition.observation_transitions {
+				let from_node_id = transition_edge[0];
+				let to_node_id = transition_edge[1];
+
+				let from_belief_node_id = node_mapping_per_mode[transition.from_mode_id][&from_node_id];
+				let to_belief_node_id = node_mapping_per_mode[transition.to_mode_id][&to_node_id];
+
+				self.belief_graph.add_edge(from_belief_node_id, to_belief_node_id);
+				self.belief_graph.nodes[from_belief_node_id].node_type = BeliefNodeType::Observation;
+			}
+		}
+
+		final_belief_node_ids
+	}
+
+	pub fn compute_expected_costs_to_goals(&mut self, final_belief_node_ids: &Vec<usize>) {
+		self.expected_costs_to_goals = conditional_dijkstra(&self.belief_graph, &final_belief_node_ids, &|a: &[f64; 2], b: &[f64;2]| self.map_shelves_domain.cost_evaluator(a, b));
+	}
+
+	pub fn extract_policy(&self) -> Policy<2> {
+		//let mut policy = extract_policy(&self.belief_graph, &self.expected_costs_to_goals, &|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b) );
+		//policy.compute_expected_costs_to_goals(&|a: &[f64; N], b: &[f64;N]| self.fns.cost_evaluator(a, b));
+		//println!("COST:{}", policy.expected_costs);
+
+		extract_policy(&self.belief_graph, &self.expected_costs_to_goals, &|a: &[f64; 2], b: &[f64; 2]| self.map_shelves_domain.cost_evaluator(a, b) )
+	}
+
 	fn sample_observation_of_zone(&mut self, target_zone_id: usize) -> [f64; 2] {
 		let zone_position = self.map_shelves_domain.get_zone_positions()[target_zone_id];
 
@@ -348,148 +449,6 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 
 		[x, y]
 	}
-
-	/*
-	fn shortcut(&self, path: &Vec<[f64; 2]>) -> Vec<[f64; 2]> {
-		let mut short_cut_path = path.clone();
-
-		if short_cut_path.len() <= 2 {
-			return short_cut_path;
-		}
-
-		let mut sampler = DiscreteSampler::new();
-
-		fn interpolate(a: f64, b: f64, lambda: f64) -> f64 {
-			a * (1.0 - lambda) + b * lambda
-		}
-
-		let checker = Funcs{m:&self.map_shelves_domain};
-
-		let joint_dim = 2;
-		for _i in 0..100 {
-			let joint = sampler.sample(joint_dim);
-			let interval_start = sampler.sample(short_cut_path.len() - 2);
-			let interval_end = interval_start + 2 + sampler.sample(short_cut_path.len() - interval_start - 2);
-
-			assert!(interval_end < short_cut_path.len());
-			assert!(interval_end - interval_start >= 2);
-
-			let interval_start_state = &short_cut_path[interval_start];
-			let interval_end_state = &short_cut_path[interval_end];
-
-			// create shortcut states (interpolated on a particular joint)
-			let mut shortcut_states = vec![];
-			shortcut_states.reserve(interval_end - interval_start);
-			for j in interval_start..interval_end {
-				let lambda = (j - interval_start) as f64 / (interval_end - interval_start) as f64;
-				let mut shortcut_state = short_cut_path[j];
-				shortcut_state[joint] = interpolate(interval_start_state[joint], interval_end_state[joint], lambda);
-				shortcut_states.push(shortcut_state);
-			}
-
-			// check validities
-			let mut should_commit = true;
-			for (from, to) in pairwise_iter(&shortcut_states) {
-				should_commit = should_commit && checker.transition_validator(from, to); // TODO: can be optimized to avoid rechecking 2 times the nodes
-			}
-
-			// commit if valid
-			if should_commit {
-				for j in interval_start..interval_end {
-					short_cut_path[j] = shortcut_states[j - interval_start];
-				}
-			}
-		}
-
-		short_cut_path
-	}
-
-	fn build_policy(&self, leaf: &SearchNode, tree: &SearchTree) -> Policy<2> {
-		let node_path_to_last_leaf = self.get_search_nodes_to_last_leaf(leaf, tree);
-
-		let mut policy = Policy {
-			leafs: vec![],
-			nodes: vec![],
-			expected_costs: 0.0
-		};
-
-		let mut last_observation_node_id = 0;
-		for search_node in &node_path_to_last_leaf {
-			let mut previous_node_id = last_observation_node_id;
-
-			// observation path
-			let path_to_observation = self.shortcut(&search_node.path_to_observation);
-			for state in &path_to_observation {
-				let node_id = policy.add_node(state, &search_node.belief_state, 0, false);
-				if node_id != previous_node_id {
-					policy.add_edge(previous_node_id, node_id);
-				}
-				previous_node_id = node_id;
-			}
-			last_observation_node_id = previous_node_id;
-
-			// pick-up path
-			let path_to_pickup = self.shortcut(&search_node.path_to_pickup);
-			for (i, state) in path_to_pickup.iter().enumerate() {
-				let is_leaf = i == search_node.path_to_pickup.len() - 1;
-				let mut belief_state = search_node.belief_state.clone();
-				for (i, p) in belief_state.iter_mut().enumerate() {
-					if i != search_node.target_zone_id.unwrap() {
-						*p = 0.0;
-					}
-				}
-				belief_state = normalize_belief(&belief_state);
-				let node_id = policy.add_node(state, &belief_state, 0, is_leaf);
-				if node_id != previous_node_id {
-					policy.add_edge(previous_node_id, node_id);
-				}
-				previous_node_id = node_id;
-			}
-		}
-
-		policy.compute_expected_costs_to_goals(&|a: &[f64;2], b: &[f64;2]| Funcs{m:&self.map_shelves_domain}.cost_evaluator(a, b));
-
-		policy
-	}
-
-	fn reconstruct_path_tree(&self, leaf: &SearchNode, tree: &SearchTree) -> Vec<Vec<[f64; 2]>> {
-		assert!(leaf.remaining_zones.is_empty());
-
-		let node_path_to_last_leaf = self.get_search_nodes_to_last_leaf(leaf, tree);
-
-		println!("number of nodes:{}", node_path_to_last_leaf.len());
-
-		// gather path tree
-		let mut path_tree: Vec<Vec<[f64; 2]>> = vec![];
-
-		path_tree.push(vec![]);
-		for current in &node_path_to_last_leaf {
-			for p in &current.path_to_observation {
-				path_tree[0].push(*p);
-			}
-
-			path_tree.push(current.path_to_pickup.clone());
-		}
-
-		path_tree
-	}
-
-	fn get_search_nodes_to_last_leaf(&self, leaf: &SearchNode, tree: &SearchTree) ->  Vec<SearchNode> {
-		let mut node_path_to_last_leaf: Vec<SearchNode> = vec![];
-
-		node_path_to_last_leaf.push(leaf.clone());
-
-		let mut current = leaf;
-		while let Some(parent_id) = current.parent {
-			let parent = &tree.nodes[parent_id];
-			node_path_to_last_leaf.push(parent.clone());
-
-			current = parent;
-		}
-		node_path_to_last_leaf = node_path_to_last_leaf.into_iter().rev().collect();
-
-		node_path_to_last_leaf
-	}*/
 }
 
 #[cfg(test)]
@@ -506,16 +465,17 @@ fn test_plan_on_map2_prm() {
 	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
 	
 	let initial_belief_state = vec![1.0/2.0; 2];
-	let policy = tamp_prm.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 10);
+	let policy = tamp_prm.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 50);
 	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_zones_observability();
 	
-	for mode in &tamp_prm.search_tree.modes {
-		m2.draw_full_graph(&mode.prm.graph);
-		break;
+	for (i, mode) in tamp_prm.search_tree.modes.iter().enumerate() {
+		if i == 2 {
+			m2.draw_full_graph(&mode.prm.graph);
+		}
 	}
 	
 	m2.draw_policy(&policy);
@@ -530,7 +490,7 @@ fn test_plan_on_map7_plan_prm() {
 	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);	
 	
 	let initial_belief_state = vec![1.0/6.0; 6];
-	let policy = tamp_prm.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 150);
+	let policy = tamp_prm.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 400);
 	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
