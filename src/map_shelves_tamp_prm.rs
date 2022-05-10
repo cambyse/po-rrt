@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::f64::consts::PI;
 use ordered_float::*;
 use std::collections::HashMap;
+//use std::collections::HashSet;
 
 
 fn normalize_belief(unnormalized_belief_state: &BeliefState) -> BeliefState {
@@ -81,6 +82,8 @@ impl<'a> Mode<'a>{
 			true => { self.object_there_transition_hash_map.insert(target_zone, transition_id) },
 			_ =>  { self.object_not_there_transition_hash_map.insert(target_zone, transition_id) },
 		};
+
+		self.outcoming_transitions.push(transition_id);
 	}
 
 	pub fn add_incoming_transition(&mut self, transition_id: usize){
@@ -100,7 +103,7 @@ pub struct ModeTransition {
 	pub observed_zone_id: usize,
 	pub from_mode_id: usize,
 	pub to_mode_id: usize,
-	pub transition_states: Vec<[f64;2]>,
+	pub observation_transitions: Vec<[usize;2]>,
 	pub observation: bool
 }
 
@@ -113,6 +116,16 @@ pub struct ModeTree<'a> {
 }
 
 impl<'a> ModeTree<'a> {
+	pub fn new() -> Self {
+		Self{
+			modes: Vec::new(),
+			mode_transitions: Vec::new(),
+			belief_states: Vec::new(),
+			belief_hash_map: HashMap::new(),
+			mode_hash_map: HashMap::new()
+		}
+	}
+
 	pub fn add_mode(&mut self,
 					remaining_zones: &[usize],
 					reaching_probability: f64,
@@ -148,7 +161,7 @@ impl<'a> ModeTree<'a> {
 			observed_zone_id,
 			from_mode_id,
 			to_mode_id,
-			transition_states: Vec::new(),
+			observation_transitions: Vec::new(),
 			observation
 		};
 
@@ -242,6 +255,9 @@ pub struct MapShelfDomainTampPRM<'a> {
 	pub n_worlds: usize,
 	pub goal_radius: f64,
 	n_it: usize,
+	// mode tree
+	pub search_tree: ModeTree<'a>,
+	pub belief_graph: BeliefGraph<2>
 }
 
 impl<'a> MapShelfDomainTampPRM<'a> {
@@ -252,71 +268,85 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 			   zone_sampler: ContinuousSampler::new([0.0, 0.0], [map_shelves_domain.visibility_distance, 2.0 * PI  as f64 ]),
 			   n_worlds: map_shelves_domain.n_zones(), 
 			   goal_radius,
-			   n_it: 0}
+			   n_it: 0,
+			   search_tree: ModeTree::new(),
+			   belief_graph: BeliefGraph::new(Vec::new(), Vec::new())}
 	}
 
 	pub fn plan(&mut self, start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter_max: usize) -> Result<Policy<2>, &'static str> {
-		self.plan_prm(start, initial_belief_state, max_step, search_radius, n_iter_max)
-	}	
+		self.grow_mm_prm(start, initial_belief_state, max_step, search_radius, n_iter_max);
 
-	fn plan_prm(&mut self, &_start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter_max: usize) -> Result<Policy<2>, &'static str> {
-		check_belief_state(initial_belief_state);
-
-		let belief_states = self.map_shelves_domain.reachable_belief_states(initial_belief_state);
-		let belief_hash_map = create_belief_states_hash_map(&belief_states);
-		let mut search_tree = ModeTree{
-			modes: vec![],
-			mode_transitions: vec![],
-			belief_states: belief_states,
-			belief_hash_map: belief_hash_map,
-			mode_hash_map: HashMap::new()
-		};
-
-
-		let remaining_zones: Vec<usize> = (0..self.map_shelves_domain.n_zones()).collect();
-		search_tree.add_mode(&remaining_zones, 1.0,&initial_belief_state.clone(), self.continuous_sampler.clone(), self.map_shelves_domain);
-
-		let mut i = 0;
-		while i < n_iter_max {
-			i +=1;
-
-			let mode_id = self.discrete_sampler.sample(search_tree.modes.len());
-			let mode = &mut search_tree.modes[mode_id];
-
-			println!("sampled mode:{}, of belief:{:?}", mode_id, &mode.belief_state);
-
-			// grow the prm
-			mode.prm.grow_graph(max_step, search_radius, 100);
-
-			// sample transitions nodes
-			for _j in 0..10 {
-				let mode = &search_tree.modes[mode_id];
-
-				if !mode.remaining_zones.is_empty() {
-					let target_zone_index = self.discrete_sampler.sample(mode.remaining_zones.len());
-					let target_zone_id = search_tree.modes[mode_id].remaining_zones[target_zone_index];
-	
-					let transitions = search_tree.get_transitions(mode_id, target_zone_id, &self.continuous_sampler, &self.map_shelves_domain);
-					
-					// sample transition
-					let transition_sample = self.sample_observation_of_zone(target_zone_id);
-				}
-			}
-		}
+		//self.build_belief_graph();
 
 		Ok(Policy{
 			expected_costs: 0.0,
 			leafs: vec![],
 			nodes: vec![]
 		})
+	}	
+
+	fn grow_mm_prm(&mut self, &_start: &[f64; 2], initial_belief_state: &BeliefState, max_step: f64, search_radius: f64, n_iter_max: usize) {
+		check_belief_state(initial_belief_state);
+
+		let belief_states = self.map_shelves_domain.reachable_belief_states(initial_belief_state);
+		let belief_hash_map = create_belief_states_hash_map(&belief_states);
+		
+		self.search_tree.belief_states = belief_states;
+		self.search_tree.belief_hash_map = belief_hash_map;
+
+
+		let remaining_zones: Vec<usize> = (0..self.map_shelves_domain.n_zones()).collect();
+		self.search_tree.add_mode(&remaining_zones, 1.0,&initial_belief_state.clone(), self.continuous_sampler.clone(), self.map_shelves_domain);
+
+		let mut i = 0;
+		while i < n_iter_max {
+			i +=1;
+
+			let mode_id = self.discrete_sampler.sample(self.search_tree.modes.len());
+			let mode = &mut self.search_tree.modes[mode_id];
+
+			println!("sampled mode:{}, of belief:{:?}", mode_id, &mode.belief_state);
+
+			// grow the prm
+			mode.prm.grow_graph(max_step, search_radius, 200);
+
+			// sample transitions nodes
+			for _j in 0..10 {
+				let mode = &self.search_tree.modes[mode_id];
+
+				if !mode.remaining_zones.is_empty() {
+					let target_zone_index = self.discrete_sampler.sample(mode.remaining_zones.len());
+					let target_zone_id = self.search_tree.modes[mode_id].remaining_zones[target_zone_index];
+	
+					let transition_ids = self.search_tree.get_transitions(mode_id, target_zone_id, &self.continuous_sampler, &self.map_shelves_domain);
+					
+					// sample transition
+					let transition_sample = self.sample_observation_of_zone(target_zone_id);
+
+					// add sample to the respective prms
+					let mode = &mut self.search_tree.modes[mode_id];
+					let observation_node_id = mode.prm.add_sample(transition_sample, max_step, search_radius);
+					for transition_id in transition_ids {
+						let transition = &mut self.search_tree.mode_transitions[transition_id];
+						let destination_mode = &mut self.search_tree.modes[transition.to_mode_id];
+						let destination_observation_node_id = destination_mode.prm.add_sample(transition_sample, max_step, search_radius);
+
+						transition.observation_transitions.push([observation_node_id, destination_observation_node_id]);
+					}
+				}
+			}
+		}
 	}
 
 	fn sample_observation_of_zone(&mut self, target_zone_id: usize) -> [f64; 2] {
 		let zone_position = self.map_shelves_domain.get_zone_positions()[target_zone_id];
 
 		let [radius, angle] = self.zone_sampler.sample();
+		//let radius = 0.5;
+		let x = (zone_position[0] + radius * angle.cos()).clamp(self.continuous_sampler.low[0], self.continuous_sampler.up[0]-0.0001);
+		let y = (zone_position[1] + radius * angle.sin()).clamp(self.continuous_sampler.low[1], self.continuous_sampler.up[1]-0.0001);
 
-		[zone_position[0] + radius * angle.cos(), zone_position[1] + radius * angle.sin()]
+		[x, y]
 	}
 
 	/*
@@ -467,27 +497,29 @@ mod tests {
 
 use super::*;
 
-#[test]
-fn test_shuffle() {
-	shuffled(&vec![0, 1, 2, 3, 4], &mut DiscreteSampler::new());
-}
 
 #[test]
 fn test_plan_on_map2_prm() {
 	let mut m = MapShelfDomain::open("data/map1_2_goals.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map1_2_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
+	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
 	
 	let initial_belief_state = vec![1.0/2.0; 2];
-	let policy = tamp_rrt.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 10);
+	let policy = tamp_prm.plan(&[-0.9, 0.0], &initial_belief_state, 0.1, 2.0, 10);
 	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_zones_observability();
+	
+	for mode in &tamp_prm.search_tree.modes {
+		m2.draw_full_graph(&mode.prm.graph);
+		break;
+	}
+	
 	m2.draw_policy(&policy);
-	m2.save("results/test_map1_2_goals_tamp_rrt");
+	m2.save("results/test_map1_2_goals_tamp_prm");
 }
 
 #[test]
@@ -495,17 +527,22 @@ fn test_plan_on_map7_plan_prm() {
 	let mut m = MapShelfDomain::open("data/map7.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map7_6_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_rrt = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);	
+	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);	
 	
 	let initial_belief_state = vec![1.0/6.0; 6];
-	let policy = tamp_rrt.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 10000);
+	let policy = tamp_prm.plan(&[0.0, -0.8], &initial_belief_state, 0.1, 2.0, 150);
 	let policy = policy.expect("nopath tree found!");
 
 	let mut m2 = m.clone();
 	m2.resize(5);
 	m2.draw_zones_observability();
 	m2.draw_policy(&policy);
-	m2.save("results/map7/test_map7_tamp_rrt");
+	m2.save("results/map7/test_map7_tamp_prm");
+}
+
+#[test]
+fn test_shuffle() {
+	shuffled(&vec![0, 1, 2, 3, 4], &mut DiscreteSampler::new());
 }
 
 }

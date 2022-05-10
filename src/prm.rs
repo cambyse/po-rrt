@@ -46,63 +46,63 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 	
 			// First sample state and world
 			let new_state = self.continuous_sampler.sample();
-			
-			// Handle grow start case
+
+			 // Handle grow start case
 			if self.graph.nodes.is_empty() {
 				self.graph.add_node(new_state, 0);
 				self.kdtree.reset(new_state);
 				continue
 			}
-
-			// Add node
-			let new_node_id = self.graph.add_node(new_state, 0);
-			let new_node = &self.graph.nodes[new_node_id];
-
-			if self.graph.nodes.is_empty() {
-				self.graph.add_node(new_state, 0);
-				self.kdtree.reset(new_state);
-				continue;
-			}
-
-			// We find the neighbors in a specific radius of new_state.
-			let radius = heuristic_radius(self.graph.nodes.len(), max_step, search_radius, N);
-
-			//if i%100 == 0{
-			//	println!("radius:{}", radius);
-			//}
-
-			// Finaly we connect to neighbors 
-			let neighbour_ids: Vec<usize> = self.kdtree.nearest_neighbors(new_state, radius).iter()
-			.map(|&kd_node| kd_node.id)
-			.collect();
-
-			self.kdtree.add(new_state, new_node_id);
-
-			if neighbour_ids.is_empty() { 
-				continue;
-			}
-
-			// No need to check differently the backward edges, assumption is pure path planning, and that paths are reversible
-			// Idea: sample which ones we rewire to?
-			let edges: Vec<(usize, usize)> = neighbour_ids.iter()
-				.map(|&id| (id, &self.graph.nodes[id]))
-				.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
-				.filter(|(_, validity_id)| validity_id.is_some())
-				.map(|(id, validity_id)| (id, validity_id.unwrap()))
-				.collect();
-						
-			// connect neighbors to new node
-			for (id, _) in &edges {
-				self.graph.add_edge(*id, new_node_id, 0);
-			}
-
-			// connect new node to neighbor
-			for (id, _) in &edges {
-				self.graph.add_edge(new_node_id, *id, 0);
-			}
+                      			
+			self.add_sample(new_state, max_step, search_radius);
 
 			self.n_it += 1;
 		}
+	}
+
+	pub fn add_sample(&mut self, new_state: [f64; N], max_step: f64, search_radius: f64) -> usize {
+		// Add node
+		let new_node_id = self.graph.add_node(new_state, 0);
+		let new_node = &self.graph.nodes[new_node_id];
+
+		// We find the neighbors in a specific radius of new_state.
+		let radius = heuristic_radius(self.graph.nodes.len(), max_step, search_radius, N);
+
+		//if i%100 == 0{
+		//	println!("radius:{}", radius);
+		//}
+
+		// Finaly we connect to neighbors 
+		let neighbour_ids: Vec<usize> = self.kdtree.nearest_neighbors(new_state, radius).iter()
+		.map(|&kd_node| kd_node.id)
+		.collect();
+
+		self.kdtree.add(new_state, new_node_id);
+
+		if neighbour_ids.is_empty() { 
+			return new_node_id;
+		}
+
+		// No need to check differently the backward edges, assumption is pure path planning, and that paths are reversible
+		// Idea: sample which ones we rewire to?
+		let edges: Vec<(usize, usize)> = neighbour_ids.iter()
+			.map(|&id| (id, &self.graph.nodes[id]))
+			.map(|(id, node)| (id, self.fns.transition_validator(node, new_node)))
+			.filter(|(_, validity_id)| validity_id.is_some())
+			.map(|(id, validity_id)| (id, validity_id.unwrap()))
+			.collect();
+					
+		// connect neighbors to new node
+		for (id, _) in &edges {
+			self.graph.add_edge(*id, new_node_id, 0);
+		}
+
+		// connect new node to neighbor
+		for (id, _) in &edges {
+			self.graph.add_edge(new_node_id, *id, 0);
+		}
+
+		new_node_id
 	}
 
 	pub fn plan_path(&mut self, start: &[f64; N], goal: &[f64; N]) -> Vec<[f64; N]>  {
@@ -110,6 +110,11 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 		let kd_goal = self.kdtree.nearest_neighbor(*goal);
 
 		let cost_to_goal = dijkstra(&self.graph, &vec![kd_goal.id], self.fns);
+
+		if cost_to_goal[kd_start.id].is_infinite() {
+			return Vec::new();
+		}
+
 		extract_path(&self.graph, kd_start.id, &cost_to_goal, self.fns)
 	}
 
@@ -134,7 +139,7 @@ fn test_plan_on_map0_prm() {
 						   &m);
 
 	prm.init(&[0.0, 0.0]);					   
-	prm.grow_graph(0.1, 5.0, 2500);
+	prm.grow_graph(0.1, 5.0, 1500);
 	prm.print_summary();
 	let path = prm.plan_path(&[0.0, 0.0], &[0.0, 0.9]);
 
