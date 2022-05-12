@@ -35,11 +35,7 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 		self.kdtree.reset(start);
 	}
 
-	pub fn grow_graph(&mut self, max_step: f64, search_radius: f64, n_iter: usize) {
-
-		println!("grow graph..");
-		//let start_time = Instant::now();
-		
+	pub fn grow_graph(&mut self, max_step: f64, search_radius: f64, n_iter: usize) {		
 		let mut i = 0;
 		while i < n_iter { // order important! avoid calling the is_final_set_complete as long as the number of iterations is not reached!
 			i+=1;
@@ -47,13 +43,6 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 			// First sample state and world
 			let new_state = self.continuous_sampler.sample();
 
-			 // Handle grow start case
-			if self.graph.nodes.is_empty() {
-				self.graph.add_node(new_state, 0);
-				self.kdtree.reset(new_state);
-				continue
-			}
-                      			
 			self.add_sample(new_state, max_step, search_radius);
 
 			self.n_it += 1;
@@ -61,6 +50,13 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 	}
 
 	pub fn add_sample(&mut self, new_state: [f64; N], max_step: f64, search_radius: f64) -> usize {
+		 // Handle grow start case
+		 if self.graph.nodes.is_empty() {
+			self.graph.add_node(new_state, 0);
+			self.kdtree.reset(new_state);
+			return 0;
+		}
+
 		// Add node
 		let new_node_id = self.graph.add_node(new_state, 0);
 		let new_node = &self.graph.nodes[new_node_id];
@@ -69,7 +65,7 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 		let radius = heuristic_radius(self.graph.nodes.len(), max_step, search_radius, N);
 
 		//if i%100 == 0{
-		//	println!("radius:{}", radius);
+		//println!("radius:{}", radius);
 		//}
 
 		// Finaly we connect to neighbors 
@@ -82,6 +78,13 @@ impl<'a, F: PTOFuncs<N>, const N: usize> PRM<'a, F, N> {
 		if neighbour_ids.is_empty() { 
 			return new_node_id;
 		}
+
+		//for n_id in &neighbour_ids {
+		//	if norm2(self.graph.node(*n_id).state(), &new_state) < 0.000001 {
+		//		println!("Here!: {:?}, {:?}", &self.graph.node(*n_id).state(), &new_state);
+		//	}
+		//}
+
 
 		// No need to check differently the backward edges, assumption is pure path planning, and that paths are reversible
 		// Idea: sample which ones we rewire to?

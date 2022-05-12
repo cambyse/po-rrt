@@ -99,7 +99,8 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
 	for &id in final_node_ids {
 		dist[id] = 0.0;
         q.push(id, Priority{prio: 0.0});
-        //println!("belief node:{:?}", graph.nodes[id].belief_state);
+        
+        println!("leaf belief node:{:?} {:?}", graph.nodes[id].belief_state, graph.nodes[id].state);
 	}
 
     let mut it = 0;
@@ -126,6 +127,7 @@ pub fn conditional_dijkstra<const N: usize>(graph: &BeliefGraph<N>, final_node_i
                     let vv = &graph.nodes[vv_id];
                     let p = transition_probability(&graph.nodes[u_id].belief_state, &graph.nodes[vv_id].belief_state);
 
+                    assert! (p> 0.0);
                     //println!("belief avant:{:?} apres:{:?}", graph.nodes[u_id].belief_state, graph.nodes[vv_id].belief_state);
                     //assert_eq!(u.children.len(), 2);
 
@@ -204,7 +206,7 @@ pub fn extract_policy<const N: usize>(graph: &BeliefGraph<N>, expected_costs_to_
             let child_policy_id = policy.add_node(&child.state, &graph.nodes[child_id].belief_state, child_id, is_leaf);
             policy.add_edge(policy_node_id, child_policy_id);
 
-            //println!("add node, belief state {:?}, cost: {:?}", &graph.nodes[child_id].belief_state, &expected_costs_to_goals[child_id]);
+            //println!("add node, belief state {:?}, position: {:?}, cost: {:?}", &graph.nodes[child_id].belief_state, &graph.nodes[child_id].state, &expected_costs_to_goals[child_id]);
 
             if ! is_leaf {
                 lifo.push((child_policy_id, child_id));

@@ -389,7 +389,11 @@ impl MapShelfDomain {
 	pub fn draw_full_graph(&mut self, graph: &PTOGraph<2>) {
 		for from in &graph.nodes {
 			for to_edge in from.children.clone() {
-				let to  = &graph.nodes[to_edge.id];
+				let to = &graph.nodes[to_edge.id];
+
+				//self.draw_circle(&to.state, 0.015, RED);
+				//self.draw_circle(&from.state, 0.015, GREEN);
+
 				self.draw_line(from.state, to.state, GRAY5, 0.25);
 			}
 		}
