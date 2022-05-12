@@ -31,8 +31,9 @@ fn main()
 {
 	//main_2d_map4();
 	//test_plan_on_map_benchmark_8_goals(2500);
-	println!("time:{:?}", test_plan_tamp_mm_prm_on_map_benchmark_8_goals(5000));
+	//println!("time:{:?}", test_plan_tamp_mm_prm_on_map_benchmark_8_goals(5000));
 	//test_plan_tamp_mm_prm_on_map_benchmark_2_goals(7500);
+	main_baseline_comparison();
 }
 
 fn main_2d_map4()
@@ -102,10 +103,10 @@ fn main_baseline_comparison()
 	let pto_iter_min = 5000;
 	let rrt_iter_min = 2500;
 
-	let mut w = File::create("results/map_benchmark/costs_and_timings.txt").unwrap();
+	let mut w = File::create("results/map_benchmark/costs_and_timings_with_prm.txt").unwrap();
 
 	for m in vec![2, 4, 6, 8] {
-		let (pto_planning_times, pto_costs): (Vec<f64>, Vec<f64>) = 
+		/*let (pto_planning_times, pto_costs): (Vec<f64>, Vec<f64>) = 
 		match m {
 			2 => (0..n_runs).map(|_| test_plan_on_map1_2_goals(pto_iter_min)).unzip(),
 			4 => (0..n_runs).map(|_| test_plan_on_map_benchmark_4_goals(pto_iter_min)).unzip(),
@@ -121,16 +122,30 @@ fn main_baseline_comparison()
 			6 => (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_6_goals(rrt_iter_min)).unzip(),
 			8 => (0..n_runs).map(|_| test_plan_tamp_rrt_on_map_benchmark_8_goals(rrt_iter_min)).unzip(),
 			_ => panic!("no benchmark function for it!")
+		};*/
+
+		let (mm_prm_planning_times, mm_prm_costs): (Vec<f64>, Vec<f64>) =
+		match m {
+			2 => (0..n_runs).map(|_| test_plan_tamp_mm_prm_on_map_benchmark_2_goals(pto_iter_min)).unzip(),
+			4 => (0..n_runs).map(|_| test_plan_tamp_mm_prm_on_map_benchmark_4_goals(pto_iter_min)).unzip(),
+			6 => (0..n_runs).map(|_| test_plan_tamp_mm_prm_on_map_benchmark_6_goals(pto_iter_min)).unzip(),
+			8 => (0..n_runs).map(|_| test_plan_tamp_mm_prm_on_map_benchmark_8_goals(pto_iter_min)).unzip(),
+			_ => panic!("no benchmark function for it!")
 		};
 
-		println!("PTO --- {} goals", m);
+		/*println!("PTO --- {} goals", m);
 		println!("costs: {:?}", compute_statistics(&pto_costs));
 		println!("planning_times: {:?}", compute_statistics(&pto_planning_times));
 
 		println!("RRT* --- {} goals", m);
 		println!("costs: {:?}", compute_statistics(&rrt_costs));
-		println!("planning_times: {:?}", compute_statistics(&rrt_planning_times));
+		println!("planning_times: {:?}", compute_statistics(&rrt_planning_times));*/
 
+		println!("PRM* --- {} goals", m);
+		println!("costs: {:?}", compute_statistics(&mm_prm_costs));
+		println!("planning_times: {:?}", compute_statistics(&mm_prm_planning_times));
+
+		/*
 		writeln!(&mut w, "PTO --- {} goals", m).unwrap();
 		writeln!(&mut w, "costs: {:?}", compute_statistics(&pto_costs)).unwrap();
 		writeln!(&mut w, "planning_times: {:?}", compute_statistics(&pto_planning_times)).unwrap();
@@ -139,6 +154,12 @@ fn main_baseline_comparison()
 		writeln!(&mut w, "RRT* --- {} goals", m).unwrap();
 		writeln!(&mut w, "costs: {:?}", compute_statistics(&rrt_costs)).unwrap();
 		writeln!(&mut w, "planning_times: {:?}", compute_statistics(&rrt_planning_times)).unwrap();
+		writeln!(&mut w, "\n").unwrap();
+		writeln!(&mut w, "\n").unwrap();*/
+
+		writeln!(&mut w, "PRM* --- {} goals", m).unwrap();
+		writeln!(&mut w, "costs: {:?}", compute_statistics(&mm_prm_costs)).unwrap();
+		writeln!(&mut w, "planning_times: {:?}", compute_statistics(&mm_prm_planning_times)).unwrap();
 		writeln!(&mut w, "\n").unwrap();
 		writeln!(&mut w, "\n").unwrap();
 	}
@@ -525,7 +546,7 @@ fn test_plan_tamp_mm_prm_on_map_benchmark_2_goals(n_iter_min: usize) -> (f64, f6
 	let mut m = MapShelfDomain::open("data/map_benchmark.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map_benchmark_2_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
+	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
 	
 	let start = Instant::now();
 
@@ -614,7 +635,7 @@ fn test_plan_tamp_mm_prm_on_map_benchmark_4_goals(n_iter_min: usize) -> (f64, f6
 	let mut m = MapShelfDomain::open("data/map_benchmark.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map_benchmark_4_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
+	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
 	
 	let start = Instant::now();
 
@@ -707,7 +728,7 @@ fn test_plan_tamp_mm_prm_on_map_benchmark_6_goals(n_iter_min: usize) -> (f64, f6
 	let mut m = MapShelfDomain::open("data/map_benchmark.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map_benchmark_6_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
+	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
 	
 	let start = Instant::now();
 
@@ -801,7 +822,7 @@ fn test_plan_tamp_mm_prm_on_map_benchmark_8_goals(n_iter_min: usize) -> (f64, f6
 	let mut m = MapShelfDomain::open("data/map_benchmark.pgm", [-1.0, -1.0], [1.0, 1.0]);
 	m.add_zones("data/map_benchmark_8_goals_zone_ids.pgm", 0.5);
 
-	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
+	let mut tamp_prm = MapShelfDomainTampPRM::new(ContinuousSampler::new_true_random([-1.0, -1.0], [1.0, 1.0]), DiscreteSampler::new(), &m, 0.05);		
 	
 	let start = Instant::now();
 

@@ -15,7 +15,6 @@ use std::collections::BTreeMap;
 use std::f64::consts::PI;
 use ordered_float::*;
 use std::collections::HashMap;
-//use std::collections::HashSet;
 
 fn is_final(belief_state: &BeliefState) -> bool {
 	belief_state.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap() >= &0.999
@@ -489,7 +488,7 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 		let zone_position = self.map_shelves_domain.get_zone_positions()[target_zone_id];
 
 		let [radius, angle] = self.zone_sampler.sample();
-		let radius = radius * (radius / self.map_shelves_domain.visibility_distance).sqrt();
+		let radius = self.map_shelves_domain.visibility_distance; //radius * (radius / self.map_shelves_domain.visibility_distance).sqrt();
 		let x = (zone_position[0] + radius * angle.cos()).clamp(self.continuous_sampler.low[0], self.continuous_sampler.up[0]-0.0001);
 		let y = (zone_position[1] + radius * angle.sin()).clamp(self.continuous_sampler.low[1], self.continuous_sampler.up[1]-0.0001);
 
