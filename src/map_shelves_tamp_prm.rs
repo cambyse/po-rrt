@@ -488,7 +488,8 @@ impl<'a> MapShelfDomainTampPRM<'a> {
 		let zone_position = self.map_shelves_domain.get_zone_positions()[target_zone_id];
 
 		let [radius, angle] = self.zone_sampler.sample();
-		let radius = self.map_shelves_domain.visibility_distance; //radius * (radius / self.map_shelves_domain.visibility_distance).sqrt();
+		let radius = self.map_shelves_domain.visibility_distance;
+		//let radius = radius * (radius / self.map_shelves_domain.visibility_distance).powf(1.0/5.0);
 		let x = (zone_position[0] + radius * angle.cos()).clamp(self.continuous_sampler.low[0], self.continuous_sampler.up[0]-0.0001);
 		let y = (zone_position[1] + radius * angle.sin()).clamp(self.continuous_sampler.low[1], self.continuous_sampler.up[1]-0.0001);
 

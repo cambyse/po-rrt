@@ -1,0 +1,28 @@
+PRM* --- 2 goals
+costs: Statistics { mean: 1.8490384428028994, std_dev: 0.004921439094325196 }
+planning_times: Statistics { mean: 0.21647465687000003, std_dev: 0.002577154548062384 }
+
+
+
+
+PRM* --- 4 goals
+costs: Statistics { mean: 2.2445302690425706, std_dev: 0.0029309516075049376 }
+planning_times: Statistics { mean: 1.2757681117199997, std_dev: 0.010194204915460112 }
+
+
+
+
+PRM* --- 6 goals
+costs: Statistics { mean: 2.4436071436491438, std_dev: 0.01210629937739397 }
+planning_times: Statistics { mean: 6.3155427920400005, std_dev: 0.12194511247314094 }
+
+
+
+
+PRM* --- 8 goals
+costs: Statistics { mean: 2.48623124809253, std_dev: 0.011520445490517159 }
+planning_times: Statistics { mean: 33.06961835350001, std_dev: 0.3165917711297297 }
+
+
+
+

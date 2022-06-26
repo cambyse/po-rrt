@@ -33,7 +33,8 @@ fn main()
 	//test_plan_on_map_benchmark_8_goals(2500);
 	//println!("time:{:?}", test_plan_tamp_mm_prm_on_map_benchmark_8_goals(5000));
 	//test_plan_tamp_mm_prm_on_map_benchmark_2_goals(7500);
-	main_baseline_comparison();
+	test_plan_tamp_mm_prm_on_map_benchmark_6_goals(5000);
+	//main_baseline_comparison();
 }
 
 fn main_2d_map4()
@@ -103,7 +104,7 @@ fn main_baseline_comparison()
 	let pto_iter_min = 5000;
 	let rrt_iter_min = 2500;
 
-	let mut w = File::create("results/map_benchmark/costs_and_timings_with_prm.txt").unwrap();
+	let mut w = File::create("results/map_benchmark/costs_and_timings_with_prms.txt").unwrap();
 
 	for m in vec![2, 4, 6, 8] {
 		/*let (pto_planning_times, pto_costs): (Vec<f64>, Vec<f64>) = 
@@ -737,6 +738,8 @@ fn test_plan_tamp_mm_prm_on_map_benchmark_6_goals(n_iter_min: usize) -> (f64, f6
 	let policy = policy.expect("nopath tree found!");
 	let mut policy_refiner = PTOPolicyRefiner::new(&policy, &m, &tamp_prm.belief_graph);
 	let (refined_policy, _) = policy_refiner.refine_solution(RefinmentStrategy::PartialShortCut(1500));
+
+	refined_policy.print();
 
 	let duration = start.elapsed();
 
